@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(api|auth|voice|upload|chat|docs|openapi\\.json)(/.*)?",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/buscofacil/(.*)",
+      "dest": "/frontend/buscofacil/$1"
+    },
+    {
+      "src": "/xkape/(.*)",
+      "dest": "/frontend/xkape/$1"
+    }
+  ]
+}

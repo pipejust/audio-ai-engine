@@ -1,0 +1,9 @@
+backend/.env
+backend/.chroma_db/
+backend/.chroma_db_test/
+backend/__pycache__/
+backend/venv/
+backend/server.log
+backend/server2.log
+backend/backend_debug.log
+.DS_Store

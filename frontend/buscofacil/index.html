@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaVo v1 - Realtime Voice AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .orb-container {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .orb {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #3b82f6 0%, #1d4ed8 100%);
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .orb.listening {
+            animation: pulse-listen 1.5s infinite;
+            background: radial-gradient(circle, #f43f5e 0%, #be123c 100%);
+            box-shadow: 0 0 50px rgba(244, 63, 94, 0.8);
+        }
+
+        .orb.speaking {
+            animation: pulse-speak 0.8s infinite alternate;
+            background: radial-gradient(circle, #10b981 0%, #047857 100%);
+            box-shadow: 0 0 60px rgba(16, 185, 129, 0.8);
+        }
+
+        .orb.thinking {
+            animation: spin 2s linear infinite;
+            background: radial-gradient(circle, #8b5cf6 0%, #6d28d9 100%);
+        }
+
+        @keyframes pulse-listen {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 30px rgba(244, 63, 94, 0.5);
+            }
+
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 60px rgba(244, 63, 94, 0.9);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 30px rgba(244, 63, 94, 0.5);
+            }
+        }
+
+        @keyframes pulse-speak {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 40px rgba(16, 185, 129, 0.6);
+            }
+
+            100% {
+                transform: scale(1.15);
+                box-shadow: 0 0 80px rgba(16, 185, 129, 1);
+            }
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .transcription-box {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid #334;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 30px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .text-user {
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+
+        .text-ai {
+            color: #e2e8f0;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        /* Forms Layout */
+        .panel {
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid #334;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+        }
+
+        input[type="text"],
+        textarea,
+        input[type="file"] {
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        button.btn {
+            background: #3b82f6;
+            color: white;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        button.btn:hover {
+            background: #2563eb;
+        }
+
+        .notification {
+            font-size: 0.85rem;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .success {
+            color: #10b981;
+        }
+
+        .error {
+            color: #f43f5e;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-8">
+
+    <div class="text-center mb-8 w-full mt-4">
+        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
+            Busco Fácil AI</h1>
+        <p class="text-slate-400 mt-2">Agente de Voz Inteligente para Inmobiliaria</p>
+        <button id="logout-btn" onclick="logout()"
+            class="hidden text-sm bg-red-900/50 hover:bg-red-900 border border-red-700 text-white py-1 px-4 rounded mt-4">Cerrar
+            Sesión</button>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="login-container" class="flex flex-col items-center justify-center panel max-w-sm mx-auto mt-10 shadow-2xl">
+        <h2 class="text-xl font-bold mb-6 text-white">Acceso a Busco Fácil</h2>
+        <input type="text" id="username" placeholder="Usuario (ej: admin_buscofacil)"
+            class="w-full mb-4 mt-2 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
+        <input type="password" id="password" placeholder="Contraseña (ej: secreto123)"
+            class="w-full mb-6 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
+        <button onclick="doLogin()" class="btn w-full">Iniciar Sesión</button>
+        <div id="login-error" class="text-red-500 mt-4 text-sm hidden">Credenciales inválidas</div>
+    </div>
+
+    <!-- Main Grid (Hidden until login) -->
+    <div id="app-container" class="max-w-6xl mx-auto grid-cols-1 md:grid-cols-2 gap-8 hidden">
+
+        <!-- Left Column: Voice Interface -->
+        <div class="flex flex-col items-center justify-center panel min-h-[500px]">
+            <!-- Dropdown removido: el project-id ahora viene firmado desde el backend con el Token (JWT) -->
+
+
+            <div class="mb-8 w-full">
+                <label class="text-sm text-slate-400 font-semibold mb-1 block">Voz del Agente IA</label>
+                <select id="voice-id" onchange="updateUIForProject()"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-blue-500">
+                    <option value="echo" selected>Voz Masculina (Felipe)</option>
+                    <option value="shimmer">Voz Femenina (Isabella)</option>
+                </select>
+            </div>
+
+            <h2 class="text-xl font-semibold mb-2">Conexión de Voz</h2>
+            <p class="text-slate-400 mb-8" id="status-text">Toca la esfera para conectar</p>
+
+            <div class="orb-container mb-8" id="orb-btn">
+                <div class="orb" id="orb">
+                    <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-white" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="transcription-box hidden" id="t-box">
+                <div id="transcript-content"></div>
+            </div>
+        </div>
+
+        <!-- Right Column: Knowledge Ingestion -->
+        <div class="panel flex flex-col">
+            <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Entrenamiento & Base de Conocimiento
+            </h2>
+
+            <!-- Context Text -->
+            <div class="mb-4">
+                <label class="text-sm font-semibold text-slate-300">1. Reglas de Negocio (Texto Libre)</label>
+                <textarea id="text-input" rows="3"
+                    placeholder="Ej: El horario de atención es de 8am a 5pm..."></textarea>
+                <div id="text-notif" class="notification"></div>
+                <button class="btn" onclick="uploadText()">Memorizar Texto</button>
+            </div>
+
+            <!-- Context Document -->
+            <div class="mb-4 pt-4 border-t border-slate-700/50">
+                <label class="text-sm font-semibold text-slate-300">2. Subir Documento (PDF, TXT, CSV)</label>
+                <input type="file" id="file-input" accept=".pdf,.txt,.csv">
+                <div id="file-notif" class="notification"></div>
+                <button class="btn" onclick="uploadDocument()">Procesar Documento</button>
+            </div>
+
+            <!-- Context DB -->
+            <div class="mb-4 pt-4 border-t border-slate-700/50">
+                <label class="text-sm font-semibold text-slate-300">3. Conexión a Base de Datos (SQLite Local)</label>
+                <input type="text" id="db-path" placeholder="Ruta a test.db">
+                <input type="text" id="db-query" value="SELECT * FROM properties" placeholder="Query SQL">
+                <div id="db-notif" class="notification"></div>
+                <button class="btn" onclick="uploadSQLite()">Sincronizar Datos</button>
+            </div>
+
+            <!-- Context Wasi -->
+            <div id="wasi-section" class="mb-4 pt-4 border-t border-slate-700/50">
+                <label class="text-sm font-semibold text-slate-300 flex justify-between items-center">
+                    4. Sincronizar Inmuebles Wasi API (Busco Fácil)
+                </label>
+                <input type="number" id="wasi-take" value="50" placeholder="Cantidad a sincronizar (ej: 50)">
+                <div id="wasi-notif" class="notification"></div>
+                <button class="btn" onclick="uploadWasi()">📥 Descargar y Aprender Propiedades</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const loginContainer = document.getElementById('login-container');
+        const appContainer = document.getElementById('app-container');
+        const logoutBtn = document.getElementById('logout-btn');
+        const orbBtn = document.getElementById('orb-btn');
+        const orb = document.getElementById('orb');
+        const statusText = document.getElementById('status-text');
+        const tBox = document.getElementById('t-box');
+        const tContent = document.getElementById('transcript-content');
+
+        let currentToken = localStorage.getItem('access_token');
+        let currentProject = localStorage.getItem('project_id');
+
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const API_BASE = isLocal ? 'http://localhost:8765' : '';
+        const WS_BASE = isLocal ? 'ws://localhost:8765' : (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
+
+        let ws;
+        let mediaRecorder;
+        let isConnected = false;
+        let audioChunks = [];
+        let stream;
+        let audioContext;
+        let currentAudio = null; // Para manejar la interrupción del audio
+        let activeAudioNodes = []; // Almacena fragmentos del WebAudio emitidos por IA
+        let pendingAudioDecodes = 0; // Previene que la UI parpadee por "status: listening" si hay blobs decodificando
+        let nextPlayTime = 0; // Temporizador global para encadenar fragmentos
+
+        function setOrbState(state) {
+            orb.className = 'orb'; // reset
+            if (state === 'listening') {
+                orb.classList.add('listening');
+                statusText.innerText = "Te escucho...";
+            } else if (state === 'thinking') {
+                orb.classList.add('thinking');
+                statusText.innerText = "Razonando...";
+            } else if (state === 'speaking') {
+                orb.classList.add('speaking');
+                statusText.innerText = "MoshWasi Hablando...";
+            } else if (state === 'waiting') {
+                statusText.innerText = "Procesando...";
+            } else {
+                statusText.innerText = "Conectado. Empieza a hablar.";
+            }
+        }
+
+        async function initAudio() {
+            try {
+                // Habilitamos Echo Cancellation para evitar que se escuche a sí misma
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (audioChunks.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        ws.send(audioBlob);
+                        console.log("Audio enviado para procesar.");
+                    }
+                    audioChunks = []; // Clean up
+                };
+
+                // Detector de Voz Nativo (Web Audio API) ya instanciado en el onClick principal
+                const mediaStreamSource = audioContext.createMediaStreamSource(stream);
+                const analyser = audioContext.createAnalyser();
+                analyser.minDecibels = -60; // Sensibilidad del micrófono
+                mediaStreamSource.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                let silenceTimer = null;
+                let isSpeaking = false;
+                let sustainedLoudFrames = 0; // Para ignorar ruidos cortos
+
+                function detectSilence() {
+                    analyser.getByteFrequencyData(dataArray);
+
+                    let maxVolume = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        if (dataArray[i] > maxVolume) {
+                            maxVolume = dataArray[i];
+                        }
+                    }
+
+                    // Prevenir el Echo Loop dinámicamente, permitiendo "Barge-in" (Interrupción) si el usuario habla muy fuerte.
+                    const isAiSpeaking = activeAudioNodes && activeAudioNodes.length > 0;
+
+                    // Umbral normal (48), o Umbral de interrupción (100) si la IA está sonando.
+                    const threshold = isAiSpeaking ? 100 : 48;
+                    const requiredFrames = isAiSpeaking ? 30 : 12;
+
+                    if (maxVolume > threshold) {
+                        sustainedLoudFrames++;
+                        // Requiere ~350ms de ruido continuo (unos 20 frames a 60fps) para considerarlo habla.
+                        if (!isSpeaking && sustainedLoudFrames > requiredFrames) {
+                            console.log('🗣️ Hablando detectado (Sostenido, Vol: ' + maxVolume + ')');
+                            isSpeaking = true;
+
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                setOrbState('listening');
+
+                                // Si la IA estaba reproduciendo fragmentos PCM, los detenemos aquí inmediatamente en el Front
+                                if (activeAudioNodes && activeAudioNodes.length > 0) {
+                                    console.log("🛑 Deteniendo audio Front end por Barge-in (Habla de usuario)");
+                                    activeAudioNodes.forEach(node => {
+                                        try { node.stop(); node.disconnect(); } catch (e) { }
+                                    });
+                                    activeAudioNodes = [];
+                                    nextPlayTime = 0;
+                                }
+
+                                // Notificar a OpenAI / Backend de la interrupción temprana
+                                ws.send(JSON.stringify({ type: "interruption" }));
+
+                                if (mediaRecorder && mediaRecorder.state === 'inactive') {
+                                    mediaRecorder.start();
+                                }
+                            }
+                        }
+                        if (silenceTimer) {
+                            clearTimeout(silenceTimer);
+                            silenceTimer = null;
+                        }
+                    } else {
+                        // Resetea el contador si el ruido fue un pico corto o ruido estático
+                        if (sustainedLoudFrames > 0 && !isSpeaking) {
+                            sustainedLoudFrames--;
+                        }
+
+                        // Si está silenciado por 1.2 segundos (1200ms)
+                        if (isSpeaking && !silenceTimer) {
+                            silenceTimer = setTimeout(() => {
+                                console.log('🔇 Silencio detectado, enviando a procesar');
+                                isSpeaking = false;
+                                sustainedLoudFrames = 0;
+                                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                                    setOrbState('thinking');
+                                    mediaRecorder.stop();
+                                }
+                            }, 1200);
+                        }
+                    }
+
+                    if (isConnected && stream) {
+                        requestAnimationFrame(detectSilence);
+                    }
+                }
+
+                detectSilence(); // Iniciar monitor de audio continuo
+
+            } catch (err) {
+                console.error("Mic error:", err);
+                alert("Permite acceso al micrófono.");
+            }
+        }
+
+        orbBtn.onclick = async () => {
+            if (isConnected) {
+                // Desconectar
+                if (ws) ws.close();
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+                if (currentAudio) currentAudio.pause();
+                if (audioContext) audioContext.close();
+                if (stream) stream.getTracks().forEach(t => t.stop());
+                isConnected = false;
+                orb.className = 'orb';
+                statusText.innerText = "Desconectado. Toca para conectar.";
+                return;
+            }
+
+            // ws = new WebSocket('ws://localhost:8765/voice/stream');
+
+            // Requisito estricto de navegadores modernos: El AudioContext DEBE inicializarse o reanudarse
+            // como respuesta directa y síncrona a la interacción del usuario (el click).
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            // Pasar el token firmado al backend al inicio para que resuelva qué project_id usar
+            const vid = document.getElementById('voice-id').value || 'echo';
+            ws = new WebSocket(`${WS_BASE}/voice/stream?token=${encodeURIComponent(currentToken)}&voice=${encodeURIComponent(vid)}`);
+
+            ws.onopen = async () => {
+                isConnected = true;
+                tBox.classList.remove('hidden');
+                setOrbState('connected');
+
+                // Pedimos permisos y activamos el detector de voz
+                if (!stream) await initAudio();
+            };
+
+            ws.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    setOrbState('speaking');
+                    pendingAudioDecodes++;
+
+                    try {
+                        const arrayBuffer = await event.data.arrayBuffer();
+                        // El navegador decodificará automáticamente MP3, WAV o cualquier formato soportado a máxima calidad sin ruido estático
+                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                        // Reproducir usando programación de tiempo para que los fragmentos no se asolapen
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+
+                        // Si el tiempo proyectado se quedó atrás (porque hubo silencio o es un nuevo mensaje), reseteamos al tiempo actual + margen
+                        if (nextPlayTime < audioContext.currentTime) {
+                            nextPlayTime = audioContext.currentTime + 0.05; // 50ms delay
+                        }
+
+                        source.start(nextPlayTime);
+                        nextPlayTime += audioBuffer.duration;
+
+                        activeAudioNodes.push(source);
+
+                        source.onended = () => {
+                            const index = activeAudioNodes.indexOf(source);
+                            if (index > -1) activeAudioNodes.splice(index, 1);
+
+                            if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
+                                setOrbState('connected');
+                            }
+                        };
+                    } catch (e) {
+                        console.error("Error decodificando audio MP3: ", e);
+                    } finally {
+                        pendingAudioDecodes--;
+                        if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
+                            setOrbState('connected');
+                        }
+                    }
+                } else {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.status === "reasoning") {
+                            setOrbState('thinking');
+
+                            // INTERRUPCIÓN REAL: Detenemos a la IA vaciando todos los nodos programados
+                            if (activeAudioNodes.length > 0) {
+                                console.log("🛑 IA Interrumpida por palabras del usuario");
+                                activeAudioNodes.forEach(node => {
+                                    try { node.stop(); node.disconnect(); } catch (e) { }
+                                });
+                                activeAudioNodes = [];
+                                nextPlayTime = 0; // Reiniciamos el temporizador
+                            }
+                        }
+
+                        if (data.transcription) {
+                            tContent.innerHTML += `<div class="text-user">Usuario: ${data.transcription}</div>`;
+                        }
+                        if (data.response) {
+                            tContent.innerHTML += `<div class="text-ai">IA: ${data.response}</div>`;
+                            tBox.scrollTop = tBox.scrollHeight;
+                        }
+
+                        if (data.status === "listening") {
+                            // Si el servidor terminó de hablar o falló el TTS, devuelve a estado de escucha
+                            if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
+                                setOrbState('connected');
+                            }
+                        }
+                    } catch (e) { }
+                }
+            };
+
+            ws.onclose = () => {
+                isConnected = false;
+                orb.className = 'orb';
+                statusText.innerText = "Desconectado.";
+                // NO cerraremos el stream ni el audioContext aquí para no romper la UI en micro-desconexiones.
+                // Se cerrarán adecuadamente si el usuario hace click manual en el botón.
+            }
+        };
+
+        // UI INGESTION LOGIC
+        function showNotification(id, message, isError = false) {
+            const el = document.getElementById(id);
+            el.innerText = message;
+            el.className = 'notification ' + (isError ? 'error' : 'success');
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        async function uploadText() {
+            const text = document.getElementById('text-input').value;
+            const pid = document.getElementById('project-id').value || 'default';
+            if (!text) return showNotification('text-notif', 'El texto no puede estar vacío.', true);
+
+            const formData = new FormData();
+            formData.append('text', text);
+            formData.append('project_id', pid);
+
+            try {
+                const res = await fetch(`${API_BASE}/upload/text`, {
+                    method: 'POST', body: formData
+                });
+                if (res.ok) {
+                    showNotification('text-notif', '✅ Texto memorizado en BD Vectorial.');
+                    document.getElementById('text-input').value = '';
+                } else throw new Error("Server error");
+            } catch (e) {
+                showNotification('text-notif', '❌ Error al ingerir.', true);
+            }
+        }
+
+        async function uploadDocument() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            const pid = document.getElementById('project-id').value || 'default';
+            if (!file) return showNotification('file-notif', 'Selecciona un archivo.', true);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('project_id', pid);
+
+            try {
+                showNotification('file-notif', 'Procesando y dividiendo documento...');
+                const res = await fetch(`${API_BASE}/upload/document`, {
+                    method: 'POST', body: formData
+                });
+                if (res.ok) {
+                    showNotification('file-notif', '✅ Documento listo en BD Vectorial.');
+                    fileInput.value = '';
+                } else throw new Error("Server error");
+            } catch (e) {
+                showNotification('file-notif', '❌ Error al subir documento.', true);
+            }
+        }
+
+        async function uploadSQLite() {
+            const dbPath = document.getElementById('db-path').value;
+            const query = document.getElementById('db-query').value;
+            const pid = document.getElementById('project-id').value || 'default';
+            if (!dbPath) return showNotification('db-notif', 'Ruta de DB requerida.', true);
+
+            const formData = new FormData();
+            formData.append('db_path', dbPath);
+            formData.append('query', query || 'SELECT * FROM properties');
+            formData.append('project_id', pid);
+
+            try {
+                showNotification('db-notif', 'Integrando esquema SQLite (Tablas, Columnas, DDL)...');
+                const res = await fetch(`${API_BASE}/upload/sqlite`, {
+                    method: 'POST', body: formData
+                });
+                if (res.ok) {
+                    showNotification('db-notif', '✅ Datos SQL sincronizados en RAG.');
+                } else throw new Error("Server error");
+            } catch (e) {
+                showNotification('db-notif', '❌ Error al conectar con SQLite.', true);
+            }
+        }
+
+        async function uploadWasi() {
+            const take = document.getElementById('wasi-take').value || 50;
+            const pid = document.getElementById('project-id').value || 'buscofacil';
+
+            const formData = new FormData();
+            formData.append('take', take);
+            formData.append('project_id', pid);
+
+            try {
+                showNotification('wasi-notif', 'Descargando desde Wasi. Esto puede tardar unos segundos...');
+                const res = await fetch(`${API_BASE}/upload/wasi`, {
+                    method: 'POST', body: formData
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    showNotification('wasi-notif', `✅ ¡Listo! ${data.message}`);
+                } else {
+                    throw new Error("Server error");
+                }
+            } catch (e) {
+                showNotification('wasi-notif', '❌ Error al sincronizar Wasi API.', true);
+            }
+        }
+
+        function updateUIForProject() {
+            // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
+            // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
+            const wasiSection = document.getElementById('wasi-section');
+            if (currentProject !== 'buscofacil' && wasiSection) {
+                wasiSection.style.display = 'none';
+            }
+        }
+
+        async function doLogin() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+
+            const form = new URLSearchParams();
+            form.append('username', u);
+            form.append('password', p);
+
+            try {
+                const res = await fetch(`${API_BASE}/auth/token`, {
+                    method: 'POST',
+                    body: form
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('project_id', data.project_id);
+                    currentToken = data.access_token;
+                    currentProject = data.project_id;
+
+                    document.getElementById('login-error').classList.add('hidden');
+                    checkAuth();
+                } else {
+                    document.getElementById('login-error').classList.remove('hidden');
+                }
+            } catch (err) {
+                document.getElementById('login-error').innerText = "Error de conexión con el Servidor.";
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('project_id');
+            currentToken = null;
+            currentProject = null;
+            if (ws) ws.close();
+            checkAuth();
+        }
+
+        function checkAuth() {
+            if (currentToken) {
+                loginContainer.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                appContainer.classList.add('grid');
+                logoutBtn.classList.remove('hidden');
+                updateUIForProject();
+            } else {
+                loginContainer.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                appContainer.classList.remove('grid');
+                logoutBtn.classList.add('hidden');
+            }
+        }
+
+        // Initialize UI state
+        window.onload = () => {
+            checkAuth();
+        };
+
+    </script>
+</body>
+
+</html>

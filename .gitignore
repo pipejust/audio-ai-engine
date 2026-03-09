@@ -7,3 +7,4 @@ backend/server.log
 backend/server2.log
 backend/backend_debug.log
 .DS_Store
+.env*.local

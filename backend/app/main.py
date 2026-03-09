@@ -11,7 +11,61 @@ from app.services.agent_manager import AgentManager
 from app.routers import upload, auth
 from app.core import security
 
-app = FastAPI(title="MoshWasi AI Audio Project", version="1.0.0")
+from contextlib import asynccontextmanager
+import asyncio
+from app.services.wasi_api import WasiAPI
+from app.services.vector_store import VectorStoreManager
+from langchain_core.documents import Document
+
+async def sync_wasi_on_startup():
+    try:
+        print("🔄 Inicializando sincronización de WASI automática...")
+        wasi = WasiAPI()
+        vector_store = VectorStoreManager()
+        
+        all_properties = []
+        skip = 0
+        take = 50
+        project_id = "buscofacil"
+        
+        while True:
+            properties = wasi.search_properties(take=take, skip=skip)
+            if not properties:
+                break
+                
+            all_properties.extend(properties)
+            skip += take
+            
+            if len(properties) < take:
+                break
+        
+        if all_properties:
+            # Ingertar cada propiedad como un bloque de texto independiente en el RAG
+            for prop in all_properties:
+                formatted_data = wasi.format_property_for_rag(prop)
+                if formatted_data and "text" in formatted_data:
+                    text = formatted_data["text"]
+                    metas = formatted_data["metadata"]
+                    metas["project_id"] = project_id
+                    
+                    doc = Document(page_content=text, metadata=metas)
+                    vector_store.add_documents([doc])
+            
+            print(f"✅ Sincronización WASI completada: {len(all_properties)} propiedades vectorizadas.")
+        else:
+            print("⚠️ Sincronización WASI: No se encontraron propiedades para vectorizar.")
+
+    except Exception as e:
+        print(f"❌ Error en sincronización WASI automática: {str(e)}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Tarea en segundo plano para no bloquear a Uvicorn
+    asyncio.create_task(sync_wasi_on_startup())
+    yield
+
+
+app = FastAPI(title="MoshWasi AI Audio Project", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

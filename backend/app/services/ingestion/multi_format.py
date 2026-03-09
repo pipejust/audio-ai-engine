@@ -1,18 +1,26 @@
 import os
 import sqlite3
-import pandas as pd
-from PyPDF2 import PdfReader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+try:
+    import pandas as pd
+    from PyPDF2 import PdfReader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    HAS_INGESTION = True
+except ImportError:
+    HAS_INGESTION = False
 
 class MultiFormatIngestor:
     def __init__(self, vector_store):
         """Inicializa el Ingestor pasándole una instancia de VectorStoreManager"""
         self.vector_store = vector_store
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-        )
+        
+        if HAS_INGESTION:
+            self.text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                length_function=len,
+            )
+        else:
+            self.text_splitter = None
         # backend/knowledge_registry.db
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         self.db_path = os.path.join(base_dir, "knowledge_registry.db")

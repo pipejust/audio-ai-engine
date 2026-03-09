@@ -1,8 +1,12 @@
 import os
-import chromadb
-from chromadb.config import Settings
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+try:
+    import chromadb
+    from chromadb.config import Settings
+    from langchain_community.vectorstores import Chroma
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    HAS_ML = True
+except ImportError:
+    HAS_ML = False
 
 class VectorStoreManager:
     def __init__(self, persist_directory: str = None):
@@ -21,6 +25,11 @@ class VectorStoreManager:
         else:
             self.persist_directory = persist_directory
             
+        if not HAS_ML:
+            print("⚠️ Ejecutando sin dependencias ML (Vercel). VectorStore desactivado.")
+            self.vectorstore = None
+            return
+
         # Uso de embeddings locales y gratuitos (rápidos para pruebas)
         # BAAI/bge-small-en-v1.5 u 'all-MiniLM-L6-v2' son excelentes para RAG ligero.
         print("Cargando modelo de Embeddings (Local)...")
@@ -38,13 +47,23 @@ class VectorStoreManager:
 
     def add_documents(self, chunks):
         """Agrega chunks de texto a la base de datos vectorial"""
+        if not self.vectorstore:
+            print("⚠️ VectorStore desactivado, ignorando add_documents.")
+            return
+            
         print(f"Ingestando {len(chunks)} chunks en ChromaDB...")
         self.vectorstore.add_documents(chunks)
         print("Ingesta completada.")
 
     def get_retriever(self, k=4, project_id: str = "default", exact_location: str = None):
         """Retorna el recuperador de información para usar en la cadena RAG filtrado por proyecto usando MMR y filtros exactos"""
-        
+        if not self.vectorstore:
+            print("⚠️ VectorStore desactivado. Retornando None.")
+            class MockRetriever:
+                def invoke(self, query):
+                    return []
+            return MockRetriever()
+            
         # Base filter by project ID
         filter_dict = {"project_id": project_id}
             

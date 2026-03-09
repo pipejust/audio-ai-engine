@@ -84,8 +84,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     await voice_gateway.connect(websocket)
     await voice_gateway.process_audio_stream(websocket, auth_project_id)
 
-# Servir estáticamente los frontends para que el usuario pueda abrirlos directamente
+# Servir estáticamente los frontends para entorno local
 import os
 frontend_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
-app.mount("/buscofacil", StaticFiles(directory=os.path.join(frontend_base, "buscofacil"), html=True), name="buscofacil_ui")
-app.mount("/xkape", StaticFiles(directory=os.path.join(frontend_base, "xkape"), html=True), name="xkape_ui")
+if os.path.exists(os.path.join(frontend_base, "buscofacil")):
+    app.mount("/buscofacil", StaticFiles(directory=os.path.join(frontend_base, "buscofacil"), html=True), name="buscofacil_ui")
+if os.path.exists(os.path.join(frontend_base, "xkape")):
+    app.mount("/xkape", StaticFiles(directory=os.path.join(frontend_base, "xkape"), html=True), name="xkape_ui")

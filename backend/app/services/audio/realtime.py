@@ -236,27 +236,55 @@ class OpenAIRealtimeManager:
                             "Claro, dame un segundo reviso la base de datos de propiedades...",
                             "Un momento, voy a consultar qué propiedades tenemos disponibles por esa zona...",
                             "A ver, déjame mirar en el inventario qué encuentro...",
-                            "Permíteme un instante mientras busco las opciones..."
+                            "Permíteme un instante mientras busco las opciones...",
+                            "Dame un segundito, ya mismo estoy filtrando las casas para ti...",
+                            "Listo, voy a buscar en el sistema a ver qué me sale, un momento...",
+                            "Claro que sí, dame un momentico y te cruzo los datos...",
+                            "Voy a echarle un vistazo a las propiedades, dame un segundito...",
+                            "Perfecto, permíteme revisar qué tenemos en esa ubicación...",
+                            "Dame un momentico por favor, estoy conectándome con la base de datos..."
                         ])
                     elif function_name == "generate_software_quote":
                         muletilla = random.choice([
                             "Vale, dame un par de segundos mientras mi sistema calcula los tiempos y costos...",
                             "Excelente, voy a generar la cotización formal en este momento, dame un instante...",
-                            "Un segundo mientras redacto la propuesta y estimo los meses de desarrollo..."
+                            "Un segundo mientras redacto la propuesta y estimo los meses de desarrollo...",
+                            "Claro, permíteme un momentico armo todo el presupuesto técnico...",
+                            "A ver, voy a calcular el alcance para pasarte la propuesta...",
+                            "Perfecto, dame un segundito mientras organizo la cotización...",
+                            "Ya mismo construyo el escenario financiero...",
+                            "Dame un instante, estoy consolidando los costos del proyecto...",
+                            "Un momento por favor, voy a sacar las cuentas de esto...",
+                            "Listo, dame unos segundos para armarte la proforma formal..."
                         ])
                     elif function_name == "consult_knowledge_base":
                         muletilla = random.choice([
                             "Déjame revisar la documentación un segundo...",
                             "Voy a consultar mis manuales, permíteme un momento...",
-                            "A ver qué dice la base de conocimiento sobre eso..."
+                            "A ver qué dice la base de conocimiento sobre eso...",
+                            "Dame un segundito, busco esa información técnica en mis guías...",
+                            "Permíteme verifico el reglamento al respecto...",
+                            "Un momentico, consulto el portal de conocimiento a ver qué nos dice...",
+                            "Voy a echarle un ojo a las normativas, dame un instante...",
+                            "Claro, déjame leer rápidamente el manual sobre ese tema...",
+                            "Un segundo mientras consulto mis bases legales...",
+                            "A ver, voy a buscar la respuesta oficial en mi archivo..."
                         ])
                     elif function_name == "schedule_appointment":
                         muletilla = random.choice([
                             "Un segundo mientras conecto con la agenda para separar el espacio...",
-                            "Claro, dame un instante para registrar tu visita en el calendario..."
+                            "Claro, dame un instante para registrar tu visita en el calendario...",
+                            "Permíteme un momentico, abro la agenda de citas...",
+                            "A ver, voy a revisar qué huecos nos quedan disponibles para eso...",
+                            "Dame un secundito, ya mismo separo tu lugar...",
+                            "Listo, voy a agendar esto en el sistema...",
+                            "Un momentico por favor, bloqueando la fecha en el calendario...",
+                            "Perfecto, dame un instante para dejar esto súper agendado...",
+                            "Voy a apartar tu espacio, dame un segundo...",
+                            "Claro que sí, dame un momento para confirmar el horario..."
                         ])
                         
-                    filler_prompt = f"OBLIGATORIO: Dile al usuario EXACTAMENTE esta frase rápido con voz muy natural para hacerlo esperar mientras busco: '{muletilla}'"
+                    filler_prompt = f"OBLIGATORIO: Dile al usuario EXACTAMENTE esta frase rápido con voz muy natural de COLOMBIANO NATIVO para hacerlo esperar mientras busco: '{muletilla}'"
                     await openai_ws.send(json.dumps({"type": "conversation.item.create", "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": filler_prompt}]}}))
                     await openai_ws.send(json.dumps({"type": "response.create"}))
                     

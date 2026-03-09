@@ -6,10 +6,18 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 class VectorStoreManager:
     def __init__(self, persist_directory: str = None):
+        is_vercel = os.getenv("VERCEL") == "1"
+        if is_vercel:
+            os.environ["HF_HOME"] = "/tmp/huggingface"
+            os.environ["TRANSFORMERS_CACHE"] = "/tmp/huggingface"
+        
         if persist_directory is None:
-            # Forzamos que la bd siempre se instancie dentro de la carpeta 'backend'
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            self.persist_directory = os.path.join(base_dir, ".chroma_db")
+            if is_vercel:
+                self.persist_directory = "/tmp/.chroma_db"
+            else:
+                # Forzamos que la bd siempre se instancie dentro de la carpeta 'backend'
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                self.persist_directory = os.path.join(base_dir, ".chroma_db")
         else:
             self.persist_directory = persist_directory
             

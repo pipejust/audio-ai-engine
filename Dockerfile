@@ -10,7 +10,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copiar requerimientos e instalar (esto incluirá dependencias pesadas ML)
+# Instalar una versión ligera y CPU-only de PyTorch antes del resto de dependencias
+# Esto evita que ChromaDB y SentenceTransformers descarguen la version GPU de +2GB
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Copiar requerimientos e instalar el resto
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 

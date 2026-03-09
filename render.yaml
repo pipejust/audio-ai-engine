@@ -6,6 +6,10 @@ services:
     plan: free # Cambiar a starter si el free se queda corto de RAM para ML (muy probable para Embedding models)
     healthCheckPath: /
     envVars:
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: OPENAI_API_KEY
         sync: false
       - key: GROQ_API_KEY

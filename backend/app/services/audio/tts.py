@@ -12,15 +12,26 @@ class TTSEngine:
         self.voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM") 
         print(f"🎙️ Motor TTS ElevenLabs cargado (Voz ID: {self.voice_id}).")
 
-    def generate_audio(self, text: str) -> bytes:
+    def generate_audio(self, text: str, voice_name: str = "alloy") -> bytes:
         """
         Convierte texto a audio binario (MP3) usando ElevenLabs.
+        voice_name mapea de OpenAI ('echo', 'alloy', etc) a IDs de ElevenLabs.
         """
         if not text or not self.api_key:
             return None
-        print(f"🔊 Generando audio en ElevenLabs para: '{text}'...")
+            
+        # Mapeo de voces del frontend a IDs específicos de ElevenLabs
+        voice_map = {
+            "echo": os.getenv("ELEVENLABS_VOICE_ID", "GpnOed0ndzjm6Pc8JALF"), # Felipe (Latino)
+            "alloy": "21m00Tcm4TlvDq8ikWAM", # Rachel (Inglés/Mujer genérico)
+            # Agregar más mapeos aquí si es necesario
+        }
         
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}?output_format=mp3_44100_128"
+        target_voice_id = voice_map.get(voice_name, self.voice_id)
+            
+        print(f"🔊 Generando audio en ElevenLabs (Voz: {voice_name}) para: '{text}'...")
+        
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice_id}?output_format=mp3_44100_128"
         headers = {
             "Accept": "audio/mpeg",
             "Content-Type": "application/json",

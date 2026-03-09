@@ -33,10 +33,14 @@ class AgentManager:
         
         try:
             if query == "system_greeting_trigger":
-                # Saludo proactivo inicial siempre en español
-                prompt_text = f"El usuario acaba de abrir la aplicación y conectarse. Es imperativo que tu primer respuesta sea EXACTAMENTE Y SIN AGREGAR NADA MÁS: 'Mucho gusto mi nombre es {self.bot_name} de {self.company_name} y te ayudaré con lo que necesites.'"
-            else:
-                prompt_text = query
+                # Saludo proactivo inicial siempre en español. Bypassar Todo el RAG y LLM para que sea instantáneo.
+                instant_response = f"Mucho gusto mi nombre es {self.bot_name} de {self.company_name} y te ayudaré con lo que necesites."
+                return {
+                    "response": instant_response,
+                    "status": "success"
+                }
+            
+            prompt_text = query
                 
             # 1. Recuperar contexto (RAG) usando la consulta completa para atrapar semántica real
             print(f"🔍 Búsqueda RAG sobre query original: {query}")

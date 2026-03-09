@@ -19,14 +19,7 @@ class VoiceGatewayManager:
         self.mode = os.getenv("VOICE_ENGINE_MODE", "GROQ_PIPELINE")
         self.current_task = None
         
-        # Pre-generar muletillas para enmascarar latencia del LLM
-        print("⏳ Generando audios de relleno intermedio...")
-        self.filler_audios = [
-            self.tts_engine.generate_audio("Déjame revisar..."),
-            self.tts_engine.generate_audio("Un segundo, estoy buscando..."),
-            self.tts_engine.generate_audio("Vale, miraré qué encuentro...")
-        ]
-        self.filler_audios = [a for a in self.filler_audios if a is not None]
+        self.filler_audios = [] # Desactivamos muletillas pregeneradas para evitar acentos gringos incorrectos
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -61,10 +54,11 @@ class VoiceGatewayManager:
             greeting_result = self.agent_manager.process_query("system_greeting_trigger", project_id=project_id)
             text_response = greeting_result.get("response", "Hola.")
             
+            voice_id = websocket.query_params.get("voice", "alloy")
             print(f"🤖 Agente saluda: {text_response}")
             await self._send_json(websocket, {"status": "speaking", "response": text_response})
             
-            audio_response = self.tts_engine.generate_audio(text_response)
+            audio_response = self.tts_engine.generate_audio(text_response, voice_id)
             if audio_response:
                 await websocket.send_bytes(audio_response)
                 
@@ -129,11 +123,13 @@ class VoiceGatewayManager:
             agent_result = await asyncio.to_thread(self.agent_manager.process_query, transcription, project_id)
             text_response = agent_result.get("response", "Error procesando")
             
+            
+            voice_id = websocket.query_params.get("voice", "alloy")
             print(f"🤖 Agente responde: {text_response}")
             await self._send_json(websocket, {"status": "speaking", "response": text_response})
             
             # TTS es sincrónico
-            audio_response = await asyncio.to_thread(self.tts_engine.generate_audio, text_response)
+            audio_response = await asyncio.to_thread(self.tts_engine.generate_audio, text_response, voice_id)
             if audio_response:
                 await websocket.send_bytes(audio_response)
                 

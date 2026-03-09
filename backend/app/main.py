@@ -17,7 +17,7 @@ from app.services.wasi_api import WasiAPI
 from app.services.vector_store import VectorStoreManager
 from langchain_core.documents import Document
 
-async def sync_wasi_on_startup():
+def sync_wasi_on_startup():
     try:
         print("🔄 Inicializando sincronización de WASI automática...")
         wasi = WasiAPI()
@@ -60,8 +60,9 @@ async def sync_wasi_on_startup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Tarea en segundo plano para no bloquear a Uvicorn
-    asyncio.create_task(sync_wasi_on_startup())
+    # Tarea en segundo plano en otro thread para no bloquear el event loop de Uvicorn
+    # ya que sync_wasi_on_startup contiene peticiones HTTP síncronas que bloquean
+    asyncio.create_task(asyncio.to_thread(sync_wasi_on_startup))
     yield
 
 

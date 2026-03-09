@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: moshwasi-audio-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free # Cambiar a starter si el free se queda corto de RAM para ML (muy probable para Embedding models)
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: WASI_ID_COMPANY
+        sync: false
+      - key: WASI_TOKEN
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: "https://audioaiproject.vercel.app"

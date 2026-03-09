@@ -292,8 +292,10 @@
         let currentProject = localStorage.getItem('project_id');
 
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const API_BASE = isLocal ? 'http://localhost:8765' : '';
-        const WS_BASE = isLocal ? 'ws://localhost:8765' : (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
+        const RENDER_API = 'https://moshwasi-audio-api.onrender.com';
+        const RENDER_WS = 'wss://moshwasi-audio-api.onrender.com';
+        const API_BASE = isLocal ? 'http://localhost:8765' : RENDER_API;
+        const WS_BASE = isLocal ? 'ws://localhost:8765' : RENDER_WS;
 
         let ws;
         let mediaRecorder;

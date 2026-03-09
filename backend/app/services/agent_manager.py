@@ -35,29 +35,32 @@ class AgentManager:
             if query == "system_greeting_trigger":
                 # Saludo proactivo inicial siempre en español
                 prompt_text = f"El usuario acaba de abrir la aplicación y conectarse. Es imperativo que tu primer respuesta sea EXACTAMENTE Y SIN AGREGAR NADA MÁS: 'Mucho gusto mi nombre es {self.bot_name} de {self.company_name} y te ayudaré con lo que necesites.'"
-                # 1. Recuperar contexto (RAG) usando la consulta completa para atrapar semántica real
-                print(f"🔍 Búsqueda RAG sobre query original: {query}")
-                retriever = self.vector_store.get_retriever(k=6, project_id=project_id)
-                docs = retriever.invoke(query)
+            else:
+                prompt_text = query
                 
-                # deduplicar documentos por contenido para evitar repeticiones
-                unique_docs = []
-                seen_content = set()
-                for d in docs:
-                    if d.page_content not in seen_content:
-                        unique_docs.append(d)
-                        seen_content.add(d.page_content)
-                
-                num_docs = len(unique_docs)
-                
-                context_text = f"RESULTADOS ENCONTRADOS EN BASE DE DATOS: {num_docs} propiedades.\n\n"
-                context_text += "\n".join([d.page_content for d in unique_docs]) if unique_docs else "No hay propiedades que coincidan."
+            # 1. Recuperar contexto (RAG) usando la consulta completa para atrapar semántica real
+            print(f"🔍 Búsqueda RAG sobre query original: {query}")
+            retriever = self.vector_store.get_retriever(k=6, project_id=project_id)
+            docs = retriever.invoke(query)
+            
+            # deduplicar documentos por contenido para evitar repeticiones
+            unique_docs = []
+            seen_content = set()
+            for d in docs:
+                if d.page_content not in seen_content:
+                    unique_docs.append(d)
+                    seen_content.add(d.page_content)
+            
+            num_docs = len(unique_docs)
+            
+            context_text = f"RESULTADOS ENCONTRADOS EN BASE DE DATOS: {num_docs} propiedades.\n\n"
+            context_text += "\n".join([d.page_content for d in unique_docs]) if unique_docs else "No hay propiedades que coincidan."
 
-                prompt_text = (
-                    f"User message: \"{query}\"\n\n"
-                    f"Context provided from database (Use this to answer if relevant):\n{context_text}\n\n"
-                    "-> YOUR MANDATORY RULE: Reply to the above message in the EXACT SAME LANGUAGE it was written in. Do not use any other language."
-                )
+            prompt_text = (
+                f"User message: \"{prompt_text}\"\n\n"
+                f"Context provided from database (Use this to answer if relevant):\n{context_text}\n\n"
+                "-> YOUR MANDATORY RULE: Reply to the above message in the EXACT SAME LANGUAGE it was written in. Do not use any other language."
+            )
 
             # Cargar instrucciones dinámicas según el proyecto
             dynamic_instructions = get_agent_instructions(project_id, self.bot_name, self.company_name)

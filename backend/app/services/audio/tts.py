@@ -22,9 +22,9 @@ class TTSEngine:
             
         # Mapeo de voces del frontend a IDs específicos de ElevenLabs
         voice_map = {
-            "echo": os.getenv("ELEVENLABS_VOICE_ID", "GpnOed0ndzjm6Pc8JALF"), # Felipe (Latino)
-            "alloy": "21m00Tcm4TlvDq8ikWAM", # Rachel (Inglés/Mujer genérico)
-            # Agregar más mapeos aquí si es necesario
+            "echo": os.getenv("ELEVENLABS_VOICE_ID", "GpnOed0ndzjm6Pc8JALF"), # Felipe (Latino Masculino)
+            "alloy": "EXAVITQu4vr4xnSDxMaL", # Bella (Latina/Neutral Femenina)
+            "shimmer": "EXAVITQu4vr4xnSDxMaL",
         }
         
         target_voice_id = voice_map.get(voice_name, self.voice_id)

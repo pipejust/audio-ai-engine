@@ -44,7 +44,7 @@ class AgentManager:
                 
             # 1. Recuperar contexto (RAG) usando la consulta completa para atrapar semántica real
             print(f"🔍 Búsqueda RAG sobre query original: {query}")
-            retriever = self.vector_store.get_retriever(k=6, project_id=project_id)
+            retriever = self.vector_store.get_retriever(k=15, project_id=project_id)
             docs = retriever.invoke(query)
             
             # deduplicar documentos por contenido para evitar repeticiones

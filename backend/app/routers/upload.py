@@ -17,7 +17,10 @@ router = APIRouter(
 vector_store = VectorStoreManager()
 ingestor = MultiFormatIngestor(vector_store)
 
-UPLOAD_DIR = "uploads"
+if os.environ.get('VERCEL') == '1':
+    UPLOAD_DIR = "/tmp/uploads"
+else:
+    UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/document")

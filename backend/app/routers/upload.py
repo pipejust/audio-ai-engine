@@ -1,10 +1,12 @@
-import os
-import shutil
+import io
+import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from typing import Optional
 from app.services.vector_store import VectorStoreManager
 from app.services.ingestion.multi_format import MultiFormatIngestor
 from app.services.wasi_api import WasiAPI
+from app.services.supabase_client import supabase_client
+from app.core.config import settings
 
 router = APIRouter(
     prefix="/upload",
@@ -16,12 +18,6 @@ router = APIRouter(
 # instanciamos aquí o lo podríamos recibir de main.py
 vector_store = VectorStoreManager()
 ingestor = MultiFormatIngestor(vector_store)
-
-if os.environ.get('VERCEL') == '1':
-    UPLOAD_DIR = "/tmp/uploads"
-else:
-    UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/document")
 async def upload_document(
@@ -37,39 +33,42 @@ async def upload_document(
     if ext not in valid_extensions:
         raise HTTPException(status_code=400, detail=f"Formato no soportado. Usa: {', '.join(valid_extensions)}")
         
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # Ingestar usando nuestro MultiFormatIngestor
-        ingestor.process_file(file_path, project_id=project_id)
+        # 1. Leer archivo crudo
+        file_content = await file.read()
         
-        # Eliminar archivo local después de la ingesta
-        os.remove(file_path)
+        # 2. Generar un nombre único para Storage
+        unique_filename = f"{project_id}/{uuid.uuid4()}_{file.filename}"
         
-        return {"message": "Documento ingerido y vectorizado exitosamente", "project_id": project_id, "filename": file.filename}
+        # 3. Subir a Supabase Storage
+        bucket_name = settings.SUPABASE_STORAGE_BUCKET
+        res = supabase_client.storage.from_(bucket_name).upload(
+            path=unique_filename,
+            file=file_content,
+            file_options={"content-type": file.content_type}
+        )
+        
+        # 4. Obtener URL pública (asumiendo que el bucket es público)
+        # Si el bucket es privado, se podría generar una URL firmada.
+        file_url = supabase_client.storage.from_(bucket_name).get_public_url(unique_filename)
+        
+        # 5. Ingestar usando nuestro MultiFormatIngestor pasando los bytes
+        ingestor.process_file_content(
+            file_content=file_content, 
+            filename=file.filename, 
+            ext=ext, 
+            project_id=project_id,
+            file_url=file_url
+        )
+        
+        return {
+            "message": "Documento subido a Storage y vectorizado exitosamente", 
+            "project_id": project_id, 
+            "filename": file.filename,
+            "file_url": file_url
+        }
     except Exception as e:
-        if os.path.exists(file_path):
-            os.remove(file_path)
         raise HTTPException(status_code=500, detail=f"Error procesando documento: {str(e)}")
-
-@router.post("/sqlite")
-async def upload_sqlite(
-    db_path: str = Form(...),
-    query: str = Form("SELECT * FROM properties"),
-    project_id: str = Form("default")
-):
-    """
-    Ingesta una base de datos SQLite pre-existente localmente.
-    Requiere la ruta absoluta o relativa al db_path y el query de extracción.
-    """
-    try:
-        ingestor.process_sqlite(db_path, query=query, project_id=project_id)
-        return {"message": "SQLite ingerido exitosamente", "project_id": project_id, "db_path": db_path}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error procesando sqlite DB: {str(e)}")
 
 @router.post("/text")
 async def upload_text(

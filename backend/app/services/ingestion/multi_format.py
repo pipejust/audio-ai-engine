@@ -1,5 +1,4 @@
 import os
-import sqlite3
 try:
     import pandas as pd
     from PyPDF2 import PdfReader
@@ -21,71 +20,62 @@ class MultiFormatIngestor:
             )
         else:
             self.text_splitter = None
-        # backend/knowledge_registry.db
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        self.db_path = os.path.join(base_dir, "knowledge_registry.db")
-        self._init_db()
-
-    def _init_db(self):
-        """Crea la tabla de registro de fuentes de entrenamiento si no existe"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS training_sources (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id TEXT,
-                source_type TEXT,
-                source_name TEXT,
-                status TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        # backend/knowledge_registry.db is handled by SQLAlchemy now via Base.metadata.create_all
+        # Database initialization has been moved to main.py
+        pass
         
-    def _log_source(self, project_id: str, source_type: str, source_name: str):
-        """Registra un nuevo archivo ingestado en la base de datos relacional"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO training_sources (project_id, source_type, source_name, status) VALUES (?, ?, ?, ?)",
-            (project_id, source_type, source_name, "indexed")
-        )
-        conn.commit()
-        conn.close()
-        print(f"📝 Auditoría: Registrada nueva fuente de conocimiento '{source_name}' para el proyecto '{project_id}'.")
+    def _log_source(self, project_id: str, source_type: str, source_name: str, file_url: str = None):
+        """Registra un nuevo archivo ingestado en la base de datos relacional usando SQLAlchemy"""
+        from app.db.session import SessionLocal
+        from app.db.models import TrainingSource
 
-    def process_file(self, file_path: str, project_id: str = "default"):
-        """Procesa un archivo PDF, CSV o TXT y lo envía a la base vectorial"""
-        if not os.path.exists(file_path):
-            print(f"❌ El archivo {file_path} no existe.")
-            return
+        db = SessionLocal()
+        try:
+            new_source = TrainingSource(
+                project_id=project_id,
+                source_type=source_type,
+                source_name=source_name,
+                status="indexed",
+                file_url=file_url
+            )
+            db.add(new_source)
+            db.commit()
+            print(f"📝 Auditoría: Registrada nueva fuente de conocimiento '{source_name}' para el proyecto '{project_id}'.")
+        except Exception as e:
+            db.rollback()
+            print(f"❌ Error al registrar en BD: {e}")
+        finally:
+            db.close()
 
-        print(f"📄 Procesando archivo: {file_path} para proyecto: {project_id}")
-        ext = file_path.split('.')[-1].lower()
+    def process_file_content(self, file_content: bytes, filename: str, ext: str, project_id: str = "default", file_url: str = None):
+        """Procesa el contenido de un documento (bytes) y lo envía a la base vectorial"""
+        print(f"📄 Procesando contenido de archivo: {filename} ({ext}) para proyecto: {project_id}")
         
         text_content = ""
-        metadata = {"source": file_path, "type": ext, "project_id": project_id}
+        metadata = {"source": filename, "type": ext, "project_id": project_id}
+        if file_url:
+            metadata["file_url"] = file_url
 
         if ext == 'txt':
-            with open(file_path, 'r', encoding='utf-8') as f:
-                text_content = f.read()
+            text_content = file_content.decode('utf-8')
         elif ext == 'pdf':
-            reader = PdfReader(file_path)
+            import io
+            reader = PdfReader(io.BytesIO(file_content))
             for page in reader.pages:
                 text_content += page.extract_text() + "\n"
         elif ext == 'csv':
-            df = pd.read_csv(file_path)
+            import io
+            df = pd.read_csv(io.BytesIO(file_content))
             # Convierte cada fila en un texto estructurado
             text_content = df.to_string()
         else:
             print(f"Formato no soportado: {ext}")
             return
+        
         self._split_and_store(text_content, metadata)
         
         # Guardar en base de datos para auditoría
-        filename = os.path.basename(file_path)
-        self._log_source(project_id, ext, filename)
+        self._log_source(project_id, ext, filename, file_url=file_url)
     def process_text(self, text: str, project_id: str = "default", split: bool = True):
         """Recibe texto libre y lo envía a la base vectorial"""
         if not text.strip():
@@ -106,30 +96,6 @@ class MultiFormatIngestor:
         # Guardar en base de datos para auditoría
         snippet = str(text)[:30] + "..." if len(text) > 30 else text
         self._log_source(project_id, "text", f"Texto Manual: {snippet}")
-
-    def process_sqlite(self, db_path: str, query: str = "SELECT * FROM properties", project_id: str = "default"):
-        """Extrae datos de una consulta SQL y los envía a la base vectorial"""
-        if not os.path.exists(db_path):
-            print(f"❌ La base de datos {db_path} no existe.")
-            return
-
-        print(f"🗄️ Procesando SQLite DB: {db_path} con query: {query} para proyecto: {project_id}")
-        conn = sqlite3.connect(db_path)
-        try:
-            df = pd.read_sql_query(query, conn)
-            # Para embeddings, unimos las columnas en texto
-            records = df.to_dict('records')
-            text_content = "\n".join([str(record) for record in records])
-            
-            metadata = {"source": db_path, "type": "sqlite", "project_id": project_id}
-            self._split_and_store(text_content, metadata)
-            
-            # Guardar en base de datos para auditoría
-            self._log_source(project_id, "sqlite", f"Query en DB Local: {db_path}")
-        except Exception as e:
-            print(f"❌ Error al consultar DB: {e}")
-        finally:
-            conn.close()
 
     def _split_and_store(self, text: str, metadata: dict):
         """Divide el texto en chunks y los guarda en ChromaDB"""

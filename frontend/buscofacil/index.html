@@ -628,7 +628,7 @@
         async function uploadSQLite() {
             const dbPath = document.getElementById('db-path').value;
             const query = document.getElementById('db-query').value;
-            const pid = document.getElementById('project-id').value || 'default';
+            const pid = currentProject || 'default';
             if (!dbPath) return showNotification('db-notif', 'Ruta de DB requerida.', true);
 
             const formData = new FormData();

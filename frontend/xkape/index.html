@@ -571,7 +571,7 @@
 
         async function uploadText() {
             const text = document.getElementById('text-input').value;
-            const pid = document.getElementById('project-id').value || 'default';
+            const pid = currentProject || 'default';
             if (!text) return showNotification('text-notif', 'El texto no puede estar vacío.', true);
 
             const formData = new FormData();
@@ -594,7 +594,7 @@
         async function uploadDocument() {
             const fileInput = document.getElementById('file-input');
             const file = fileInput.files[0];
-            const pid = document.getElementById('project-id').value || 'default';
+            const pid = currentProject || 'default';
             if (!file) return showNotification('file-notif', 'Selecciona un archivo.', true);
 
             const formData = new FormData();
@@ -618,7 +618,7 @@
         async function uploadSQLite() {
             const dbPath = document.getElementById('db-path').value;
             const query = document.getElementById('db-query').value;
-            const pid = document.getElementById('project-id').value || 'default';
+            const pid = currentProject || 'default';
             if (!dbPath) return showNotification('db-notif', 'Ruta de DB requerida.', true);
 
             const formData = new FormData();
@@ -641,7 +641,7 @@
 
         async function uploadWasi() {
             const take = document.getElementById('wasi-take').value || 50;
-            const pid = document.getElementById('project-id').value || 'buscofacil';
+            const pid = currentProject || 'buscofacil';
 
             const formData = new FormData();
             formData.append('take', take);

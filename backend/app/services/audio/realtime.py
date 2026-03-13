@@ -176,20 +176,32 @@ class OpenAIRealtimeManager:
             return header + pcm_data
 
         try:
+            audio_buffer = bytearray()
+            
             while True:
                 message = await openai_ws.recv()
                 event = json.loads(message)
+                # DEBUG: Imprimir mensajes ignorados para ver si OpenAI está tirando errores silenciosos
+                if event["type"] not in ["response.audio.delta", "response.audio_transcript.delta"]:
+                    if event["type"] == "error":
+                        print(f"🚨 OPENAI REALTIME ERROR: {event}")
                 
                 if event["type"] == "response.audio.delta":
-                    # Extraer el base64 de PCM16, envolver en WAV y enviar al navegador
+                    # Buffer the base64 PCM16 data instead of sending tiny unplayable WAV fragments
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    wav_bytes = create_wav_header(pcm_bytes)
-                    await client_ws.send_bytes(wav_bytes)
+                    audio_buffer.extend(pcm_bytes)
                 
                 elif event["type"] == "response.audio_transcript.done":
                     transcript = event["transcript"]
                     print(f"🤖 OpenAI dijo: {transcript}")
+                    
+                    # Flush accumulated audio buffer to client as a single WAV file
+                    if audio_buffer:
+                        wav_bytes = create_wav_header(bytes(audio_buffer))
+                        await client_ws.send_bytes(wav_bytes)
+                        audio_buffer.clear()
+                        
                     await client_ws.send_text(json.dumps({"status": "listening", "response": transcript}))
                     
                 elif event["type"] == "conversation.item.input_audio_transcription.completed":

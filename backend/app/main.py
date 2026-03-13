@@ -60,6 +60,12 @@ def sync_wasi_on_startup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Inicializar Base de Datos Relacional (SQLite/PostgreSQL)
+    from app.db.session import engine
+    from app.db.models import Base
+    Base.metadata.create_all(bind=engine)
+    print("✅ Base de datos relacional inicializada correctamente.")
+
     # Tarea en segundo plano en otro thread para no bloquear el event loop de Uvicorn
     # ya que sync_wasi_on_startup contiene peticiones HTTP síncronas que bloquean
     asyncio.create_task(asyncio.to_thread(sync_wasi_on_startup))
@@ -71,7 +77,7 @@ app = FastAPI(title="MoshWasi AI Audio Project", version="1.0.0", lifespan=lifes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

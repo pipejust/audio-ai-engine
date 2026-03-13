@@ -194,6 +194,7 @@
         <input type="text" id="username" placeholder="Usuario (ej: admin_buscofacil)"
             class="w-full mb-4 mt-2 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
         <input type="password" id="password" placeholder="Contraseña (ej: secreto123)"
+            onkeypress="if(event.key === 'Enter') doLogin()"
             class="w-full mb-6 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
         <button onclick="doLogin()" class="btn w-full">Iniciar Sesión</button>
         <div id="login-error" class="text-red-500 mt-4 text-sm hidden">Credenciales inválidas</div>
@@ -684,8 +685,11 @@
         }
 
         async function doLogin() {
-            const u = document.getElementById('username').value;
-            const p = document.getElementById('password').value;
+            const u = document.getElementById('username').value.trim();
+            const p = document.getElementById('password').value.trim();
+            const btn = document.querySelector('#login-container button');
+            btn.innerText = "Conectando...";
+            btn.disabled = true;
 
             const form = new URLSearchParams();
             form.append('username', u);
@@ -707,11 +711,15 @@
                     document.getElementById('login-error').classList.add('hidden');
                     checkAuth();
                 } else {
+                    document.getElementById('login-error').innerText = "Credenciales inválidas o incompletas.";
                     document.getElementById('login-error').classList.remove('hidden');
                 }
             } catch (err) {
                 document.getElementById('login-error').innerText = "Error de conexión con el Servidor.";
                 document.getElementById('login-error').classList.remove('hidden');
+            } finally {
+                btn.innerText = "Iniciar Sesión";
+                btn.disabled = false;
             }
         }
 

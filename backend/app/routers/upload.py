@@ -1,6 +1,6 @@
 import io
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from typing import Optional
 from app.services.vector_store import VectorStoreManager
 from app.services.ingestion.multi_format import MultiFormatIngestor
@@ -21,6 +21,7 @@ ingestor = MultiFormatIngestor(vector_store)
 
 @router.post("/document")
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     project_id: str = Form("default")
 ):
@@ -52,8 +53,10 @@ async def upload_document(
         # Si el bucket es privado, se podría generar una URL firmada.
         file_url = supabase_client.storage.from_(bucket_name).get_public_url(unique_filename)
         
-        # 5. Ingestar usando nuestro MultiFormatIngestor pasando los bytes
-        ingestor.process_file_content(
+        # 5. Ingestar usando nuestro MultiFormatIngestor pasando los bytes (Background Task)
+        # Esto previene que la petición se quede en timeout por lo que tarde el modelo ML
+        background_tasks.add_task(
+            ingestor.process_file_content,
             file_content=file_content, 
             filename=file.filename, 
             ext=ext, 
@@ -62,7 +65,7 @@ async def upload_document(
         )
         
         return {
-            "message": "Documento subido a Storage y vectorizado exitosamente", 
+            "message": "Documento subido. La vectorización se procesará en segundo plano.", 
             "project_id": project_id, 
             "filename": file.filename,
             "file_url": file_url

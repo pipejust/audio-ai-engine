@@ -38,8 +38,10 @@ async def upload_document(
         # 1. Leer archivo crudo
         file_content = await file.read()
         
-        # 2. Generar un nombre único para Storage
-        unique_filename = f"{project_id}/{uuid.uuid4()}_{file.filename}"
+        # 2. Generar un nombre único para Storage, saneando el nombre del archivo
+        import re
+        safe_filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.filename)
+        unique_filename = f"{project_id}/{uuid.uuid4()}_{safe_filename}"
         
         # 3. Subir a Supabase Storage
         bucket_name = settings.SUPABASE_STORAGE_BUCKET

@@ -642,7 +642,7 @@
 
         async function uploadWasi() {
             const take = document.getElementById('wasi-take').value || 50;
-            const pid = currentProject || 'buscofacil';
+            const pid = currentProject || 'xkape';
 
             const formData = new FormData();
             formData.append('take', take);
@@ -669,7 +669,7 @@
             // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
             // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
             const wasiSection = document.getElementById('wasi-section');
-            if (currentProject !== 'buscofacil' && wasiSection) {
+            if (currentProject !== 'xkape' && wasiSection) {
                 wasiSection.style.display = 'none';
             }
         }

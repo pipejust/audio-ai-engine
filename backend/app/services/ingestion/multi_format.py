@@ -49,28 +49,38 @@ class MultiFormatIngestor:
 
     def process_file_content(self, file_content: bytes, filename: str, ext: str, project_id: str = "default", file_url: str = None):
         """Procesa el contenido de un documento (bytes) y lo envía a la base vectorial"""
+        import gc
         print(f"📄 Procesando contenido de archivo: {filename} ({ext}) para proyecto: {project_id}")
         
-        text_content = ""
         metadata = {"source": filename, "type": ext, "project_id": project_id}
         if file_url:
             metadata["file_url"] = file_url
 
+        text_content_list = []
         if ext == 'txt':
-            text_content = file_content.decode('utf-8')
+            text_content_list.append(file_content.decode('utf-8'))
         elif ext == 'pdf':
             import io
             reader = PdfReader(io.BytesIO(file_content))
             for page in reader.pages:
-                text_content += page.extract_text() + "\n"
+                text_content_list.append(page.extract_text() + "\n")
+            del reader
         elif ext == 'csv':
             import io
             df = pd.read_csv(io.BytesIO(file_content))
             # Convierte cada fila en un texto estructurado
-            text_content = df.to_string()
+            text_content_list.append(df.to_string())
+            del df
         else:
             print(f"Formato no soportado: {ext}")
             return
+            
+        text_content = "".join(text_content_list)
+        
+        # Free heavy variables before executing the ML model insertion
+        del text_content_list
+        del file_content
+        gc.collect()
         
         self._split_and_store(text_content, metadata)
         
@@ -99,7 +109,24 @@ class MultiFormatIngestor:
 
     def _split_and_store(self, text: str, metadata: dict):
         """Divide el texto en chunks y los guarda en ChromaDB"""
+        import gc
         chunks = self.text_splitter.create_documents([text], metadatas=[metadata])
-        self.vector_store.add_documents(chunks)
+        
+        # Free up the large raw string now that chunks are created
+        del text
+        gc.collect()
+        
+        # Add to vector store in smaller batches to avoid RAM spike in Free Tier
+        batch_size = 20
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            self.vector_store.add_documents(batch)
+            
+            # Explicitly force GC for the model inference memory
+            del batch
+            gc.collect()
+
         print(f"✅ {len(chunks)} fragmentos guardados en la BD Vectorial.")
+        del chunks
+        gc.collect()
 

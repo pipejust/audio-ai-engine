@@ -24,3 +24,14 @@ class SmtpSettings(Base):
     smtp_pass = Column(String, nullable=False)
     from_email = Column(String, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+class Template(Base):
+    __tablename__ = "templates"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    title = Column(String, default="Plantilla Cotización")
+    project_id = Column(String, unique=True, index=True, nullable=False)
+    
+    # JSON String para guardar la familia tipográfica y los tres colores (textColor, headingColor, etc.)
+    style_config = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())

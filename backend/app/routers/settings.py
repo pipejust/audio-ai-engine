@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
-from app.db.models import SmtpSettings
+from app.db.models import SmtpSettings, Template
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -78,3 +78,56 @@ def save_smtp_settings(config: SmtpConfigRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=500, detail=f"Error guardando configuración: {e}")
         
     return {"status": "success", "message": "Configuración SMTP actualizada correctamente."}
+
+class TemplateConfigRequest(BaseModel):
+    project_id: str
+    title: str = "Plantilla Cotización"
+    style_config: str
+
+class TemplateConfigResponse(BaseModel):
+    id: int
+    project_id: str
+    title: str
+    style_config: str | None
+    
+    class Config:
+        from_attributes = True
+
+@router.get("/template", response_model=TemplateConfigResponse)
+def get_template_settings(project_id: str, db: Session = Depends(get_db)):
+    """Obtiene la configuración visual de la plantilla de un proyecto"""
+    template = db.query(Template).filter(Template.project_id == project_id).first()
+    if not template:
+        # Devolver valores por defecto vacíos si no existe
+        # Ejemplo: '{"fontFamily": "helvetica", "fontSize": "12", "textColor": "#333333", "headingColor": "#0055ff"}'
+        return TemplateConfigResponse(
+            id=0,
+            project_id=project_id,
+            title="Plantilla Cotización",
+            style_config="{}"
+        )
+    return template
+
+@router.post("/template", response_model=dict)
+def save_template_settings(config: TemplateConfigRequest, db: Session = Depends(get_db)):
+    """Crea o actualiza la configuración visual de la plantilla de un proyecto"""
+    template = db.query(Template).filter(Template.project_id == config.project_id).first()
+    
+    if template:
+        template.title = config.title
+        template.style_config = config.style_config
+    else:
+        template = Template(
+            project_id=config.project_id,
+            title=config.title,
+            style_config=config.style_config
+        )
+        db.add(template)
+        
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error guardando plantilla: {e}")
+        
+    return {"status": "success", "message": "Plantilla visual actualizada correctamente."}

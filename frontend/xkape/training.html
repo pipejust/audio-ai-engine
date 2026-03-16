@@ -295,6 +295,40 @@
             <button class="btn" onclick="saveSmtpConfig()">Guardar Configuración SMTP</button>
         </div>
 
+        <div class="panel flex flex-col w-full">
+            <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Constructor Visual de Plantillas</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Fuente Principal</label>
+                    <select id="tpl-font" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                        <option value="helvetica">Helvetica</option>
+                        <option value="times">Times New Roman</option>
+                        <option value="courier">Courier</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Tamaño (pt)</label>
+                    <input type="number" id="tpl-size" value="12" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Color de Texto (Cuerpo)</label>
+                    <div class="flex items-center gap-2 mt-[5px] mb-[15px]">
+                        <input type="color" id="tpl-text-color" value="#333333" class="w-12 h-12 rounded cursor-pointer border-0 bg-transparent p-0">
+                        <span class="text-slate-300 text-sm" id="lbl-text-color">#333333</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Color Primario (Títulos/Tabla)</label>
+                    <div class="flex items-center gap-2 mt-[5px] mb-[15px]">
+                        <input type="color" id="tpl-heading-color" value="#0055ff" class="w-12 h-12 rounded cursor-pointer border-0 bg-transparent p-0">
+                        <span class="text-slate-300 text-sm" id="lbl-heading-color">#0055ff</span>
+                    </div>
+                </div>
+            </div>
+            <div id="tpl-notif" class="notification"></div>
+            <button class="btn" onclick="saveTemplateConfig()">Guardar Plantilla Visual</button>
+        </div>
+
         <!-- Sources Table -->
         <div class="panel flex flex-col w-full">
             <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Archivos Entrenados (Memoria)</h2>
@@ -767,6 +801,87 @@
             }
         }
 
+        // --- VISUAL TEMPLATE BUILDER LOGIC ---
+        // Listeners for Color Indicators
+        document.getElementById('tpl-text-color').addEventListener('input', function(e) {
+            document.getElementById('lbl-text-color').textContent = e.target.value;
+        });
+        document.getElementById('tpl-heading-color').addEventListener('input', function(e) {
+            document.getElementById('lbl-heading-color').textContent = e.target.value;
+        });
+
+        async function loadTemplateConfig() {
+            const pid = currentProject || 'xkape';
+            try {
+                const res = await fetch(`${API_BASE}/settings/template?project_id=${pid}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.style_config && data.style_config !== "{}") {
+                        try {
+                            const config = JSON.parse(data.style_config);
+                            if (config.fontFamily) document.getElementById('tpl-font').value = config.fontFamily;
+                            if (config.fontSize) document.getElementById('tpl-size').value = config.fontSize;
+                            if (config.textColor) {
+                                document.getElementById('tpl-text-color').value = config.textColor;
+                                document.getElementById('lbl-text-color').textContent = config.textColor;
+                            }
+                            if (config.headingColor) {
+                                document.getElementById('tpl-heading-color').value = config.headingColor;
+                                document.getElementById('lbl-heading-color').textContent = config.headingColor;
+                            }
+                        } catch (e) { console.error("Error parsing Template JSON", e); }
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading Template Config", e);
+            }
+        }
+
+        async function saveTemplateConfig() {
+            const font = document.getElementById('tpl-font').value;
+            const size = document.getElementById('tpl-size').value;
+            const textColor = document.getElementById('tpl-text-color').value;
+            const headingColor = document.getElementById('tpl-heading-color').value;
+            const pid = currentProject || 'xkape';
+
+            if (!font || !size) {
+                showNotification('tpl-notif', '⚠️ Completa la fuente y el tamaño.', true);
+                return;
+            }
+
+            const styleConfig = {
+                fontFamily: font,
+                fontSize: size,
+                textColor: textColor,
+                headingColor: headingColor
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/settings/template`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        project_id: pid,
+                        title: "Plantilla Cotización Xkape",
+                        style_config: JSON.stringify(styleConfig)
+                    })
+                });
+
+                if (res.ok) {
+                    showNotification('tpl-notif', '✅ Plantilla Visual guardada correctamente.');
+                } else {
+                    throw new Error("Server error");
+                }
+            } catch (e) {
+                showNotification('tpl-notif', '❌ Error guardando Plantilla Visual.', true);
+            }
+        }
+
         function updateUIForProject() {
             // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
             // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
@@ -890,6 +1005,7 @@
                 updateUIForProject();
                 loadSources();
                 loadSmtpConfig();
+                loadTemplateConfig();
             } else {
                 loginContainer.classList.remove('hidden');
                 appContainer.classList.add('hidden');

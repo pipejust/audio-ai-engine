@@ -1,27 +1,17 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+      "source": "/(api|auth|voice|upload|chat|docs|openapi\\.json)(/.*)?",
+      "destination": "/api/index.py"
     },
     {
-      "src": "frontend/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(api|auth|voice|upload|chat|docs|openapi\\.json)(/.*)?",
-      "dest": "/api/index.py"
+      "source": "/buscofacil/(.*)",
+      "destination": "/frontend/buscofacil/$1"
     },
     {
-      "src": "/buscofacil/(.*)",
-      "dest": "/frontend/buscofacil/$1"
-    },
-    {
-      "src": "/xkape/(.*)",
-      "dest": "/frontend/xkape/$1"
+      "source": "/xkape/(.*)",
+      "destination": "/frontend/xkape/$1"
     }
   ],
   "headers": [

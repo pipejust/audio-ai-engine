@@ -135,12 +135,13 @@ openai_realtime_manager = OpenAIRealtimeManager(agent_manager)
 voice_gateway = VoiceGatewayManager(agent_manager, stt_engine, tts_engine, openai_realtime_manager)
 
 @app.websocket("/voice/stream")
-async def websocket_endpoint(websocket: WebSocket, project_id: str = "default"):
+async def websocket_endpoint(websocket: WebSocket):
     """
     Endpoint de WebSocket público para streaming Full Duplex de audio.
     Ya no requiere JWT para permitir acceso público a la interfaz de voz.
     """
     await voice_gateway.connect(websocket)
+    project_id = websocket.query_params.get("project_id", "default")
     await voice_gateway.process_audio_stream(websocket, project_id)
 
 @app.get("/cleanup-db")

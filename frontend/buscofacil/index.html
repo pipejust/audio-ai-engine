@@ -183,49 +183,13 @@
         <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
             Busco Fácil AI</h1>
         <p class="text-slate-400 mt-2">Agente de Voz Inteligente para Inmobiliaria</p>
-        <button id="logout-btn" onclick="logout()"
-            class="hidden text-sm bg-red-900/50 hover:bg-red-900 border border-red-700 text-white py-1 px-4 rounded mt-4">Cerrar
-            Sesión</button>
     </div>
 
-    <!-- Login Screen -->
-    <div id="login-container" class="flex flex-col items-center justify-center panel max-w-sm mx-auto mt-10 shadow-2xl">
-        <h2 class="text-xl font-bold mb-6 text-white">Acceso a Busco Fácil</h2>
-        <input type="text" id="username" placeholder="Usuario (ej: admin_buscofacil)"
-            class="w-full mb-4 mt-2 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
-        <input type="password" id="password" placeholder="Contraseña (ej: secreto123)"
-            onkeypress="if(event.key === 'Enter') doLogin()"
-            class="w-full mb-6 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
-        <button onclick="doLogin()" class="btn w-full">Iniciar Sesión</button>
-        <div id="login-error" class="text-red-500 mt-4 text-sm hidden">Credenciales inválidas</div>
-    </div>
-
-    <!-- Main Grid (Hidden until login) -->
-    <div id="app-container" class="max-w-2xl mx-auto flex flex-col gap-8 hidden">
-        <!-- Dashboard Link -->
-        <div class="flex justify-end w-full px-4">
-            <a href="training.html" class="text-slate-400 hover:text-white flex items-center gap-2 text-sm transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.99l1.005.828c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                </svg>
-                Gestor de Entrenamientos
-            </a>
-        </div>
-
+    <!-- Main Audio Interface -->
+    <div id="app-container" class="max-w-2xl mx-auto flex flex-col gap-8">
+        
         <!-- Left Column: Voice Interface -->
         <div class="flex flex-col items-center justify-center panel min-h-[500px]">
-            <!-- Dropdown removido: el project-id ahora viene firmado desde el backend con el Token (JWT) -->
-
-
-            <div class="mb-8 w-full">
-                <label class="text-sm text-slate-400 font-semibold mb-1 block">Voz del Agente IA</label>
-                <select id="voice-id" onchange="updateUIForProject()"
-                    class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-blue-500">
-                    <option value="echo" selected>Voz Masculina (Felipe)</option>
-                    <option value="shimmer">Voz Femenina (Isabella)</option>
-                </select>
-            </div>
 
             <h2 class="text-xl font-semibold mb-2">Conexión de Voz</h2>
             <p class="text-slate-400 mb-8" id="status-text">Toca la esfera para conectar</p>
@@ -249,17 +213,15 @@
     </div>
 
     <script>
-        const loginContainer = document.getElementById('login-container');
         const appContainer = document.getElementById('app-container');
-        const logoutBtn = document.getElementById('logout-btn');
         const orbBtn = document.getElementById('orb-btn');
         const orb = document.getElementById('orb');
         const statusText = document.getElementById('status-text');
         const tBox = document.getElementById('t-box');
         const tContent = document.getElementById('transcript-content');
 
-        let currentToken = localStorage.getItem('access_token');
-        let currentProject = localStorage.getItem('project_id');
+        // Project ID fijado para la interfaz pública
+        const currentProject = 'buscofacil';
 
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const RENDER_API = 'https://moshwasi-audio-api.onrender.com';
@@ -549,82 +511,10 @@
             setTimeout(() => el.style.display = 'none', 5000);
         }
 
-        // Removed upload functions for pure audio view
-        function updateUIForProject() {
-            // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
-            // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
-            const wasiSection = document.getElementById('wasi-section');
-            if (currentProject !== 'buscofacil' && wasiSection) {
-                wasiSection.style.display = 'none';
-            }
-        }
-
-        async function doLogin() {
-            const u = document.getElementById('username').value.trim();
-            const p = document.getElementById('password').value.trim();
-            const btn = document.querySelector('#login-container button');
-            btn.innerText = "Conectando...";
-            btn.disabled = true;
-
-            const form = new URLSearchParams();
-            form.append('username', u);
-            form.append('password', p);
-
-            try {
-                const res = await fetch(`${API_BASE}/auth/token`, {
-                    method: 'POST',
-                    body: form
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('project_id', data.project_id);
-                    currentToken = data.access_token;
-                    currentProject = data.project_id;
-
-                    document.getElementById('login-error').classList.add('hidden');
-                    checkAuth();
-                } else {
-                    document.getElementById('login-error').innerText = "Credenciales inválidas o incompletas.";
-                    document.getElementById('login-error').classList.remove('hidden');
-                }
-            } catch (err) {
-                document.getElementById('login-error').innerText = "Error de conexión con el Servidor.";
-                document.getElementById('login-error').classList.remove('hidden');
-            } finally {
-                btn.innerText = "Iniciar Sesión";
-                btn.disabled = false;
-            }
-        }
-
-        function logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('project_id');
-            currentToken = null;
-            currentProject = null;
-            if (ws) ws.close();
-            checkAuth();
-        }
-
-        function checkAuth() {
-            if (currentToken) {
-                loginContainer.classList.add('hidden');
-                appContainer.classList.remove('hidden');
-                appContainer.classList.add('grid');
-                logoutBtn.classList.remove('hidden');
-                updateUIForProject();
-            } else {
-                loginContainer.classList.remove('hidden');
-                appContainer.classList.add('hidden');
-                appContainer.classList.remove('grid');
-                logoutBtn.classList.add('hidden');
-            }
-        }
-
         // Initialize UI state
         window.onload = () => {
-            checkAuth();
+            // Ya no hay autenticación requerida en esta vista
+            console.log("Interfaz MoshWasi cargada.");
         };
 
     </script>

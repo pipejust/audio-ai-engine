@@ -233,8 +233,8 @@
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const RENDER_API = 'https://moshwasi-audio-api.onrender.com';
         const RENDER_WS = 'wss://moshwasi-audio-api.onrender.com';
-        const API_BASE = isLocal ? 'http://localhost:8765' : RENDER_API;
-        const WS_BASE = isLocal ? 'ws://localhost:8765' : RENDER_WS;
+        const API_BASE = isLocal ? 'http://localhost:8000' : RENDER_API;
+        const WS_BASE = isLocal ? 'ws://localhost:8000' : RENDER_WS;
 
         let ws;
         let mediaRecorder;
@@ -433,12 +433,17 @@
             ws.onmessage = async (event) => {
                 if (event.data instanceof Blob) {
                     setOrbState('speaking');
-                    pendingAudioDecodes++;
 
                     try {
                         const arrayBuffer = await event.data.arrayBuffer();
-                        // El navegador decodificará automáticamente MP3, WAV o cualquier formato soportado a máxima calidad sin ruido estático
-                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                        const int16Array = new Int16Array(arrayBuffer);
+                        
+                        // Convertir PCM 16-bit 24kHz a Float32 para la Web Audio API
+                        const audioBuffer = audioContext.createBuffer(1, int16Array.length, 24000);
+                        const channelData = audioBuffer.getChannelData(0);
+                        for (let i = 0; i < int16Array.length; i++) {
+                            channelData[i] = int16Array[i] / 32768.0;
+                        }
 
                         // Reproducir usando programación de tiempo para que los fragmentos no se asolapen
                         const source = audioContext.createBufferSource();
@@ -459,17 +464,12 @@
                             const index = activeAudioNodes.indexOf(source);
                             if (index > -1) activeAudioNodes.splice(index, 1);
 
-                            if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
+                            if (activeAudioNodes.length === 0) {
                                 setOrbState('connected');
                             }
                         };
                     } catch (e) {
-                        console.error("Error decodificando audio MP3: ", e);
-                    } finally {
-                        pendingAudioDecodes--;
-                        if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
-                            setOrbState('connected');
-                        }
+                        console.error("Error reproduciendo PCM stream: ", e);
                     }
                 } else {
                     try {

@@ -198,11 +198,16 @@ class OpenAIRealtimeManager:
             return header + pcm_data
 
         try:
-            audio_buffer = bytearray()
+            self.response_in_progress = False
             
             while True:
                 message = await openai_ws.recv()
                 event = json.loads(message)
+                
+                if event["type"] == "response.created":
+                    self.response_in_progress = True
+                elif event["type"] == "response.done":
+                    self.response_in_progress = False
                 
                 # REPORTE DE DEPURACIÓN HACIA EL CLIENTE
                 try:
@@ -220,20 +225,14 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
-                    # Buffer the base64 PCM16 data instead of sending tiny unplayable WAV fragments
+                    # Send raw PCM16 base64 decoded bytes directly to the frontend for instant playback
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    audio_buffer.extend(pcm_bytes)
+                    await client_ws.send_bytes(pcm_bytes)
                 
                 elif event["type"] == "response.audio_transcript.done":
                     transcript = event["transcript"]
                     print(f"🤖 OpenAI dijo: {transcript}")
-                    
-                    # Flush accumulated audio buffer to client as a single WAV file
-                    if audio_buffer:
-                        wav_bytes = create_wav_header(bytes(audio_buffer))
-                        await client_ws.send_bytes(wav_bytes)
-                        audio_buffer.clear()
                         
                     await client_ws.send_text(json.dumps({"status": "listening", "response": transcript}))
                     
@@ -379,6 +378,11 @@ class OpenAIRealtimeManager:
             }
             
             await openai_ws.send(json.dumps(function_output))
+            
+            # 3. Wait until the current active response (e.g. the muletilla) finishes playing
+            while getattr(self, "response_in_progress", False):
+                await asyncio.sleep(0.1)
+                
             await openai_ws.send(json.dumps({"type": "response.create"}))
                 
         except Exception as tool_e:

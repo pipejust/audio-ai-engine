@@ -73,7 +73,7 @@ class OpenAIRealtimeManager:
                 if voice_id == "shimmer":
                     bot_name = "Isabella"
                     
-                greeting_text = f"Mucho gusto mi nombre es {bot_name} de {self.agent_manager.company_name} y te ayudaré con lo que necesites."
+                greeting_text = f"Hola, soy {bot_name} de {self.agent_manager.company_name}. ¿En qué puedo ayudarte?"
                 
                 greeting_event = {
                     "type": "conversation.item.create",
@@ -90,7 +90,6 @@ class OpenAIRealtimeManager:
                 }
                 await openai_ws.send(json.dumps(greeting_event))
                 
-                await websocket.send_text(json.dumps({"status": "reasoning"}))
                 await openai_ws.send(json.dumps({"type": "response.create"}))
                 
                 # Definimos las tareas asíncronas para el flujo bidireccional
@@ -160,6 +159,8 @@ class OpenAIRealtimeManager:
                         # Como el frontend envía frases completas, le indicamos a OpenAI que evalúe y responda de inmediato
                         commit_event = {"type": "input_audio_buffer.commit"}
                         await openai_ws.send(json.dumps(commit_event))
+                        
+                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
                         
                         response_event = {"type": "response.create"}
                         await openai_ws.send(json.dumps(response_event))

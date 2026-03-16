@@ -23,7 +23,8 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "Si no ves propiedades de ese lugar en el contexto, dile claramente que en este momento no tenemos inmuebles disponibles ahí. "
             "FILTRO DE UBICACIÓN CRÍTICA: Si el usuario pide propiedades en un sector o barrio específico (Ej. 'Ciudad Jardín', 'Jamundí', 'Sur', 'Oeste'), DEBES revisar detalladamente el campo UBICACIÓN y TÍTULO de los resultados obtenidos. SOLO menciona las propiedades que estrictamente coincidan con ese sector. Si el sistema te trae opciones de otros barrios que no corresponden, DESCÁRTALAS e infórmale al usuario que solo encontraste la cantidad real en ese lugar exacto, o que no hay disponibles. "
             "MEMORIA CRÍTICA: Recuerda el historial reciente. Si ya le hablaste al usuario de la primera propiedad y te pide 'otra' o 'la segunda', revisa tu contexto actual y ofrécele una DIFERENTE a la que ya describiste. No repitas siempre la misma. "
-            "Menciona siempre al menos una característica clave y el precio de las propiedades."
+            "Menciona siempre al menos una característica clave y el precio de las propiedades. "
+            "REGLA OBLIGATORIA DE CIERRE: Al final de todo, cuando el usuario ya haya encontrado lo que busca o termine su consulta, OBLIGATORIO pídele sus datos de contacto (nombre, correo y demás) para poder enviarle la información detallada por correo o agendar la visita."
         )
     elif project_id == "xkape":
         project_instructions = (

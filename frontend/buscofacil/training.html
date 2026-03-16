@@ -630,6 +630,7 @@
                 if (res.ok) {
                     showNotification('text-notif', '✅ Texto memorizado en BD Vectorial.');
                     document.getElementById('text-input').value = '';
+                    loadSources();
                 } else throw new Error("Server error");
             } catch (e) {
                 showNotification('text-notif', '❌ Error al ingerir.', true);
@@ -654,6 +655,7 @@
                 if (res.ok) {
                     showNotification('file-notif', '✅ Documento listo en BD Vectorial.');
                     fileInput.value = '';
+                    loadSources();
                 } else throw new Error("Server error");
             } catch (e) {
                 showNotification('file-notif', '❌ Error al subir documento.', true);
@@ -678,6 +680,7 @@
                 });
                 if (res.ok) {
                     showNotification('db-notif', '✅ Datos SQL sincronizados en RAG.');
+                    loadSources();
                 } else throw new Error("Server error");
             } catch (e) {
                 showNotification('db-notif', '❌ Error al conectar con SQLite.', true);
@@ -701,6 +704,7 @@
                 if (res.ok) {
                     const data = await res.json();
                     showNotification('wasi-notif', `✅ ¡Listo! ${data.message}`);
+                    loadSources();
                 } else {
                     throw new Error("Server error");
                 }

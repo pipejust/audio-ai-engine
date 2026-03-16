@@ -75,15 +75,23 @@ class OpenAIRealtimeManager:
                     
                 greeting_text = f"Mucho gusto mi nombre es {bot_name} de {self.agent_manager.company_name} y te ayudaré con lo que necesites."
                 
-                await websocket.send_text(json.dumps({"status": "reasoning"}))
-                
                 greeting_event = {
-                    "type": "response.create",
-                    "response": {
-                        "instructions": f"El usuario acaba de abrir la aplicación. Debes responder inmediatamente con este saludo verbal sin decir nada más: '{greeting_text}'"
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": f"El usuario acaba de abrir la aplicación. Tu primera y única respuesta ahora mismo debe ser EXACTAMENTE Y SIN AGREGAR NADA MÁS: '{greeting_text}'"
+                            }
+                        ]
                     }
                 }
                 await openai_ws.send(json.dumps(greeting_event))
+                
+                await websocket.send_text(json.dumps({"status": "reasoning"}))
+                await openai_ws.send(json.dumps({"type": "response.create"}))
                 
                 # Definimos las tareas asíncronas para el flujo bidireccional
                 client_to_openai_task = asyncio.create_task(

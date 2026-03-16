@@ -404,9 +404,15 @@
                 audioContext.resume();
             }
 
-            // Pasar el token firmado al backend al inicio para que resuelva qué project_id usar
-            const vid = document.getElementById('voice-id').value || 'echo';
-            ws = new WebSocket(`${WS_BASE}/voice/stream?token=${encodeURIComponent(currentToken)}&voice=${encodeURIComponent(vid)}`);
+            const baseAudioUrl = `${WS_BASE}/voice/stream?project_id=${currentProject}`;
+
+            try {
+                ws = new WebSocket(baseAudioUrl);
+            } catch (err) {
+                console.error("Error conectando al WebSocket global:", err);
+                setOrbState('connected');
+                return;
+            }
 
             ws.onopen = async () => {
                 isConnected = true;

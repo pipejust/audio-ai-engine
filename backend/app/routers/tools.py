@@ -23,7 +23,7 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
     
     if function_name == "consult_knowledge_base":
         query = args.get("query", "")
-        retriever = agent_manager.vector_store.get_retriever(k=3, project_id=project_id)
+        retriever = agent_manager.vector_store.get_retriever(k=25, project_id=project_id)
         docs = retriever.invoke(query)
         context_text = "\\n".join([d.page_content for d in docs]) if docs else "No information matches the query."
         return {"status": "success", "result_text": context_text}
@@ -43,14 +43,23 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
         raw_docs = retriever.invoke(search_query)
         
         filtered_docs = []
+        
+        def normalize_str(s):
+            import unicodedata
+            return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn').lower()
+            
+        loc_norm = normalize_str(location) if location.lower() != "any" else ""
+        type_norm = normalize_str(tipo) if tipo.lower() != "any" else ""
+        
         if raw_docs:
             for d in raw_docs:
-                meta_loc = d.metadata.get("location_search", "")
-                meta_type = d.metadata.get("property_type", "")
+                page_norm = normalize_str(d.page_content)
+                meta_loc = normalize_str(d.metadata.get("location_search", ""))
+                meta_type = normalize_str(d.metadata.get("property_type", ""))
                 
-                if location.lower() != "any" and location.lower() not in meta_loc and location.lower() not in d.page_content.lower():
+                if loc_norm and loc_norm not in meta_loc and loc_norm not in page_norm:
                     continue
-                if tipo.lower() != "any" and tipo.lower() not in meta_type and tipo.lower() not in d.page_content.lower():
+                if type_norm and type_norm not in meta_type and type_norm not in page_norm:
                     continue
                     
                 filtered_docs.append(d)
@@ -146,40 +155,40 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
             pdf.multi_cell(0, 8, "Esta es una cotización automatizada generada por Inteligencia Artificial. Un agente humano se pondrá en contacto pronto para afinar detalles.")
             
             # Binary PDF output for Resend
-            pdf_bytes_global = list(bytes(pdf.output()))
+            pdf_bytes_global = bytes(pdf.output())
             
-            # 2. Setup Resend
-            resend_api_key = smtp_obj.smtp_pass if smtp_obj and smtp_obj.smtp_pass else "re_default_invalid"
-            resend.api_key = resend_api_key
-            from_email = smtp_obj.from_email if smtp_obj and smtp_obj.from_email else "soporte@xkape.bot"
+            # 2. Setup standard SMTP
+            if not smtp_obj or not smtp_obj.smtp_host or not smtp_obj.smtp_pass:
+                return {"status": "error", "result_text": "Dile al usuario: 'El sistema no tiene un servidor SMTP configurado para enviar correos. Pide a soporte que ingrese las claves.'"}
+                
+            import smtplib
+            from email.message import EmailMessage
             
-            # 3. Send Email
-            payload = {
-                "from": from_email,
-                "to": email,
-                "subject": "Tu Cotización de Software Comercial",
-                "html": "<p>Adjunto la cotización validada por nuestra Inteligencia Artificial.</p>",
-                "attachments": [
-                    {
-                        "filename": "Cotizacion.pdf",
-                        "content": pdf_bytes_global,
-                        "content_type": "application/pdf"
-                    }
-                ]
-            }
-            resend.Emails.send(payload)
+            msg = EmailMessage()
+            msg["Subject"] = "Tu Cotización de Software Comercial"
+            from_name = smtp_obj.from_name if smtp_obj.from_name else "Xkape Bot"
+            from_email = smtp_obj.from_email if smtp_obj.from_email else "soporte@xkape.bot"
+            msg["From"] = f"{from_name} <{from_email}>"
+            msg["To"] = email
+            msg.set_content("Adjunto la cotización validada por nuestra Inteligencia Artificial.")
+            msg.add_attachment(pdf_bytes_global, maintype='application', subtype='pdf', filename='Cotizacion.pdf')
+            
+            # 3. Send Email via standard SMTP (Supports Resend SMTP, Gmail, etc)
+            with smtplib.SMTP(smtp_obj.smtp_host, smtp_obj.smtp_port) as server:
+                server.starttls()
+                server.login(smtp_obj.smtp_user, smtp_obj.smtp_pass)
+                server.send_message(msg)
             
             return {"status": "success", "result_text": f"Dile al usuario que acabas de enviarle la cotización formal en PDF con los colores corporativos directamente a su correo {email}."}
             
+        except smtplib.SMTPAuthenticationError:
+            return {"status": "error", "result_text": "Dile al usuario: 'No pude enviar el correo porque las credenciales (usuario/contraseña SMTP) son inválidas. Revisa la configuración del servidor en el dashboard.'"}
+        except smtplib.SMTPException as smtp_e:
+            return {"status": "error", "result_text": f"Dile al usuario: 'El servidor SMTP rechazó el mensaje (quizás el dominio no está verificado). Detalle: {smtp_e}'"}
         except Exception as e:
             import traceback
             traceback.print_exc()
-            err_msg = str(e)
-            if "validation" in err_msg.lower() or "unauthorized" in err_msg.lower() or "invalid" in err_msg.lower():
-                inform_text = "Dile al usuario: 'No pude enviar el correo porque parece que tu clave de Resend es inválida o el dominio de tu correo no está verificado en su plataforma. Por favor, revisa la configuración SMTP en el panel'."
-            else:
-                inform_text = f"Dile al usuario: 'Hubo un problema técnico enviando el correo. Detalle: {err_msg}'"
-            return {"status": "error", "result_text": inform_text}
+            return {"status": "error", "result_text": f"Dile al usuario: 'Hubo un problema técnico enviando el correo. Detalle: {e}'"}
         
     else:
         raise HTTPException(status_code=404, detail="Tool not found")

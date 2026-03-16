@@ -256,6 +256,22 @@ async def test_websocket_openai(websocket: WebSocket):
             await ws.send(json.dumps(setup_event))
             await websocket.send_text("Sent session.update")
             
+            greeting_event = {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Hola, prueba."
+                        }
+                    ]
+                }
+            }
+            await ws.send(json.dumps(greeting_event))
+            await websocket.send_text("Sent greeting")
+            
             resp_event = {"type": "response.create"}
             await ws.send(json.dumps(resp_event))
             await websocket.send_text("Sent response.create")

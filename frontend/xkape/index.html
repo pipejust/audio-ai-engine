@@ -183,54 +183,42 @@
         <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-emerald-500">
             Xkape Cotizador AI</h1>
         <p class="text-slate-400 mt-2">Agente Inteligente de Presupuestos de Software</p>
-        <button id="logout-btn" onclick="logout()"
-            class="hidden text-sm bg-red-900/50 hover:bg-red-900 border border-red-700 text-white py-1 px-4 rounded mt-4">Cerrar
-            Sesión</button>
     </div>
 
-    <!-- Login Screen -->
-    <div id="login-container" class="flex flex-col items-center justify-center panel max-w-sm mx-auto mt-10 shadow-2xl">
-        <h2 class="text-xl font-bold mb-6 text-white">Acceso a Xkape</h2>
-        <input type="text" id="username" placeholder="Usuario (ej: admin_xkape)"
-            class="w-full mb-4 mt-2 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
-        <input type="password" id="password" placeholder="Contraseña (ej: secreto123)"
-            onkeypress="if(event.key === 'Enter') doLogin()"
-            class="w-full mb-6 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
-        <button onclick="doLogin()" class="btn w-full">Iniciar Sesión</button>
-        <div id="login-error" class="text-red-500 mt-4 text-sm hidden">Credenciales inválidas</div>
-    </div>
-
-    <!-- Main Grid (Hidden until login) -->
-    <div id="app-container" class="max-w-4xl mx-auto flex flex-col items-center justify-center gap-8 hidden">
-
+    <!-- Main Audio Interface -->
+    <div id="app-container" class="max-w-2xl mx-auto flex flex-col gap-8">
         <!-- Voice Interface -->
-        <div class="flex flex-col items-center justify-center panel min-h-[500px] w-full relative">
-            
-            <!-- Link to Training Dashboard -->
-            <div class="absolute top-4 right-4">
-                <a href="training.html" class="text-slate-400 hover:text-white flex items-center gap-2 text-sm bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+        <div class="flex flex-col items-center justify-center panel min-h-[500px]">
+
+            <h2 class="text-xl font-semibold mb-2">Conexión de Voz</h2>
+            <p class="text-slate-400 mb-8" id="status-text">Toca la esfera para conectar</p>
+
+            <div class="orb-container mb-8" id="orb-btn">
+                <div class="orb" id="orb">
+                    <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-white" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                     </svg>
-                    Gestor de Conocimiento
-                </a>
+                </div>
             </div>
 
+            <div class="transcription-box hidden" id="t-box">
+                <div id="transcript-content"></div>
+            </div>
         </div>
     </div>
 
     <script>
-        const loginContainer = document.getElementById('login-container');
         const appContainer = document.getElementById('app-container');
-        const logoutBtn = document.getElementById('logout-btn');
         const orbBtn = document.getElementById('orb-btn');
         const orb = document.getElementById('orb');
         const statusText = document.getElementById('status-text');
         const tBox = document.getElementById('t-box');
         const tContent = document.getElementById('transcript-content');
 
-        let currentToken = localStorage.getItem('access_token');
-        let currentProject = localStorage.getItem('project_id');
+        // Project ID fijado para la interfaz pública
+        const currentProject = 'xkape';
 
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const RENDER_API = 'https://moshwasi-audio-api.onrender.com';
@@ -413,9 +401,15 @@
                 audioContext.resume();
             }
 
-            // Pasar el token firmado al backend al inicio para que resuelva qué project_id usar
-            const vid = document.getElementById('voice-id').value || 'echo';
-            ws = new WebSocket(`${WS_BASE}/voice/stream?token=${encodeURIComponent(currentToken)}&voice=${encodeURIComponent(vid)}`);
+            const baseAudioUrl = `${WS_BASE}/voice/stream?project_id=${currentProject}`;
+
+            try {
+                ws = new WebSocket(baseAudioUrl);
+            } catch (err) {
+                console.error("Error conectando al WebSocket global:", err);
+                setOrbState('connected');
+                return;
+            }
 
             ws.onopen = async () => {
                 isConnected = true;
@@ -522,82 +516,10 @@
 
         // Removed ingest functions for pure voice view
 
-
-        function updateUIForProject() {
-            // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
-            // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
-            const wasiSection = document.getElementById('wasi-section');
-            if (currentProject !== 'xkape' && wasiSection) {
-                wasiSection.style.display = 'none';
-            }
-        }
-
-        async function doLogin() {
-            const u = document.getElementById('username').value.trim();
-            const p = document.getElementById('password').value.trim();
-            const btn = document.querySelector('#login-container button');
-            btn.innerText = "Conectando...";
-            btn.disabled = true;
-
-            const form = new URLSearchParams();
-            form.append('username', u);
-            form.append('password', p);
-
-            try {
-                const res = await fetch(`${API_BASE}/auth/token`, {
-                    method: 'POST',
-                    body: form
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('project_id', data.project_id);
-                    currentToken = data.access_token;
-                    currentProject = data.project_id;
-
-                    document.getElementById('login-error').classList.add('hidden');
-                    checkAuth();
-                } else {
-                    document.getElementById('login-error').innerText = "Credenciales inválidas o incompletas.";
-                    document.getElementById('login-error').classList.remove('hidden');
-                }
-            } catch (err) {
-                document.getElementById('login-error').innerText = "Error de conexión con el Servidor.";
-                document.getElementById('login-error').classList.remove('hidden');
-            } finally {
-                btn.innerText = "Iniciar Sesión";
-                btn.disabled = false;
-            }
-        }
-
-        function logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('project_id');
-            currentToken = null;
-            currentProject = null;
-            if (ws) ws.close();
-            checkAuth();
-        }
-
-        function checkAuth() {
-            if (currentToken) {
-                loginContainer.classList.add('hidden');
-                appContainer.classList.remove('hidden');
-                appContainer.classList.add('grid');
-                logoutBtn.classList.remove('hidden');
-                updateUIForProject();
-            } else {
-                loginContainer.classList.remove('hidden');
-                appContainer.classList.add('hidden');
-                appContainer.classList.remove('grid');
-                logoutBtn.classList.add('hidden');
-            }
-        }
-
         // Initialize UI state
         window.onload = () => {
-            checkAuth();
+            // Ya no hay autenticación requerida en esta vista
+            console.log("Interfaz MoshWasi cargada.");
         };
 
     </script>

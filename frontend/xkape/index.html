@@ -408,7 +408,7 @@
                 audioContext.resume();
             }
 
-            const baseAudioUrl = `${WS_BASE}/voice/stream?project_id=${currentProject}`;
+            const baseAudioUrl = `${WS_BASE}/voice/stream?project_id=${currentProject}&voice=onyx`;
 
             try {
                 ws = new WebSocket(baseAudioUrl);

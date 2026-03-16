@@ -70,10 +70,17 @@ class OpenAIRealtimeManager:
                 
                 # Saludo Proactivo Dinámico (Ajustar nombre según la voz)
                 bot_name = self.agent_manager.bot_name
-                if voice_id == "shimmer":
+                company_name_ov = self.agent_manager.company_name
+                
+                if project_id == "buscofacil":
+                    company_name_ov = "Busco Fácil"
+                elif project_id == "xkape":
+                    company_name_ov = "Xkape"
+                    
+                if voice_id == "shimmer" or voice_id == "nova":
                     bot_name = "Isabella"
                     
-                greeting_text = f"Hola, soy {bot_name} de {self.agent_manager.company_name}. ¿En qué puedo ayudarte?"
+                greeting_text = f"Hola, soy {bot_name} de {company_name_ov}. ¿En qué puedo ayudarte?"
                 
                 greeting_event = {
                     "type": "conversation.item.create",

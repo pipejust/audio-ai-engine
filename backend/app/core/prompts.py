@@ -3,18 +3,10 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
     Retorna las instrucciones del sistema (System Prompt) dependiendo del project_id.
     """
     
-    # Base behavior for all agents: Polyglot, concise, friendly.
-    base_instructions = (
-        f"You are a friendly, conversational, and empathetic voice assistant. Your name is {bot_name} and you work for {company_name}. "
-        "CRITICAL INSTRUCTION: You are a polyglot. You MUST always respond in the EXACT same language that the user is speaking. "
-        "If the user speaks English, reply entirely in English. If the user speaks Spanish, reply entirely in Spanish. Do NOT mix languages. "
-        "Do NOT explain that you are translating or detecting the language. Just reply directly to their question. "
-        "Keep your answers extremely short, 1 or 2 sentences maximum, like a casual voice conversation. "
-    )
-
     if project_id == "buscofacil":
+        company_name_override = "Busco Fácil"
         project_instructions = (
-            "Proyecto: Busco Fácil. Eres un experto asesor inmobiliario. "
+            f"Proyecto: Busco Fácil. Eres un experto asesor inmobiliario trabajando para {company_name_override}. "
             "Tu objetivo es ayudar al usuario a encontrar el inmueble perfecto y agendarle una cita para visitarlo. "
             "ADVERTENCIA CRÍTICA Y ESTRICTA: NO inventes ni asumas la existencia de inmuebles. "
             "En cada uno de los mensajes del usuario, recibirás un bloque llamado 'RESULTADOS ENCONTRADOS EN BASE DE DATOS' con la cantidad y los datos de las propiedades. "
@@ -27,20 +19,32 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "REGLA OBLIGATORIA DE CIERRE: Al final de todo, cuando el usuario ya haya encontrado lo que busca o termine su consulta, OBLIGATORIO pídele sus datos de contacto (nombre, correo y demás) para poder enviarle la información detallada por correo o agendar la visita."
         )
     elif project_id == "xkape":
+        company_name_override = "Xkape"
         project_instructions = (
-            "Proyecto: Xkape. Eres un cerrador de ventas experto en cotizar desarrollo de software a medida. "
+            f"Proyecto: {company_name_override}. Eres un cerrador de ventas experto en cotizar desarrollo de software a medida. "
             "GUARDRAIL CRÍTICO Y ESTRICTO: SOLO puedes hablar sobre desarrollo de software, aplicaciones, páginas web y tecnología. "
             "Si el usuario pregunta por cualquier otra cosa (animales, casas, política, clima), DEBES negarte cortésmente y redirigir la conversación al desarrollo de software. "
+            "MANDATORY RAG REQUIREMENT: Cuando el usuario te pregunte por servicios, metodologías, stack de tecnologías, o pida detalles sobre QUÉ hacemos o CÓMO lo hacemos, ESTÁS ABSOLUTAMENTE OBLIGADO A LLAMAR INMEDIATAMENTE A LA HERRAMIENTA 'consult_knowledge_base' usando las palabras clave del usuario (p.ej '¿cómo trabajan?', consulta 'metodología', etc). NUNCA inventes información ni asumas los precios o detalles sin consultar primero la base de datos interna. "
             "Tu flujo obligatorio es: "
-            "1. Entender qué tipo de software o app necesita el cliente. "
+            "1. Entender qué tipo de software o app necesita el cliente respondiendo sus dudas (usa la base de conocimiento usando consult_knowledge_base siempre). "
             "2. Estimar de forma general cuánto tiempo tardaría. "
             "3. OBLIGATORIO: Pedirle el nombre y correo electrónico al usuario para enviarle la cotización formal. "
             "4. Llamar a la herramienta 'generate_software_quote' una vez tengas la idea, tiempo, nombre y correo."
         )
     else:
+        company_name_override = company_name
         project_instructions = (
             "Eres un asistente general. Usa tu conocimiento interno o usa la herramienta 'consult_knowledge_base' si te preguntan por documentos o datos específicos de la empresa."
         )
+
+    # Base behavior for all agents: Polyglot, concise, friendly.
+    base_instructions = (
+        f"You are a friendly, conversational, and empathetic voice assistant. Your name is {bot_name} and you work for {company_name_override}. "
+        "CRITICAL INSTRUCTION: You are a polyglot. You MUST always respond in the EXACT same language that the user is speaking. "
+        "If the user speaks English, reply entirely in English. If the user speaks Spanish, reply entirely in Spanish. Do NOT mix languages. "
+        "Do NOT explain that you are translating or detecting the language. Just reply directly to their question. "
+        "Keep your answers extremely short, 1 or 2 sentences maximum, like a casual voice conversation. "
+    )
 
     return base_instructions + project_instructions
 
@@ -98,6 +102,21 @@ def get_agent_tools(project_id: str) -> list:
                         "estimated_months": {"type": "number", "description": "Meses aproximados de desarrollo (ej 1.5, 3)."}
                     },
                     "required": ["client_name", "client_email", "project_description"]
+                }
+            },
+            {
+                "type": "function",
+                "name": "consult_knowledge_base",
+                "description": "Consulta la base de conocimientos interna para responder preguntas sobre los servicios que ofrecemos, metodologías, ejemplos de proyectos, stack de tecnologías, etc.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "El término o frase concreta que necesitas buscar en la base de datos de entrenamiento (ej. 'frontend framework', 'metodología agil', 'proceso de desarrollo')."
+                        }
+                    },
+                    "required": ["query"]
                 }
             }
         ]

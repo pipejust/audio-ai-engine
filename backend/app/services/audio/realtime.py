@@ -63,21 +63,23 @@ class OpenAIRealtimeManager:
                 if voice_id == "shimmer":
                     bot_name = "Isabella"
                     
-                greeting_text = f"Mucho gusto mi nombre es {bot_name} de {self.agent_manager.company_name} y te ayudaré con lo que necesites."
-                greeting_event = {
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "message",
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": f"El usuario acaba de abrir la aplicación. Tu primera y única respuesta ahora mismo debe ser EXACTAMENTE Y SIN AGREGAR NADA MÁS: '{greeting_text}'"
-                            }
-                        ]
-                    }
-                }
-                await openai_ws.send(json.dumps(greeting_event))
+                # SALUDO PROACTIVO DESACTIVADO TEMPORALMENTE POR CAUSAR DEADLOCK 
+                # greeting_text = f"Mucho gusto mi nombre es {bot_name} de {self.agent_manager.company_name} y te ayudaré con lo que necesites."
+                # greeting_event = {
+                #     "type": "conversation.item.create",
+                #     "item": {
+                #         "type": "message",
+                #         "role": "user",
+                #         "content": [
+                #             {
+                #                 "type": "input_text",
+                #                 "text": f"El usuario acaba de abrir la aplicación. Tu primera y única respuesta ahora mismo debe ser EXACTAMENTE Y SIN AGREGAR NADA MÁS: '{greeting_text}'"
+                #             }
+                #         ]
+                #     }
+                # }
+                # await openai_ws.send(json.dumps(greeting_event))
+                
                 await openai_ws.send(json.dumps({"type": "response.create"}))
                 await websocket.send_text(json.dumps({"status": "reasoning"}))
                 
@@ -128,12 +130,15 @@ class OpenAIRealtimeManager:
                 if message.get("bytes"):
                     audio_bytes = message["bytes"]
                     try:
-                        # Convertimos el buffer WebM a PCM16 24kHz Mono (Requerimiento de OpenAI Realtime)
-                        audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
-                        audio_segment = audio_segment.set_frame_rate(24000).set_channels(1).set_sample_width(2)
-                        pcm_data = audio_segment.raw_data
-                        
-                        audio_b64 = base64.b64encode(pcm_data).decode("utf-8")
+                        def convert_to_pcm16(b: bytes) -> str:
+                            import base64
+                            import io
+                            from pydub import AudioSegment
+                            seg = AudioSegment.from_file(io.BytesIO(b), format="webm")
+                            seg = seg.set_frame_rate(24000).set_channels(1).set_sample_width(2)
+                            return base64.b64encode(seg.raw_data).decode("utf-8")
+
+                        audio_b64 = await asyncio.to_thread(convert_to_pcm16, audio_bytes)
                         
                         # Enviar el audio
                         append_event = {

@@ -151,6 +151,7 @@ async def test_openai_api():
     import json
     import websockets
     import asyncio
+    from app.core.prompts import get_agent_instructions, get_agent_tools
     
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -170,26 +171,32 @@ async def test_openai_api():
             msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
             trace.append({"received": json.loads(msg)})
             
+            project_id = "buscofacil"
+            base_instructions = get_agent_instructions(project_id, "TestBot", "TestComp")
+            instructions = base_instructions + "\n\nREGLA CRÍTICA... "
+            tools = get_agent_tools(project_id)
+            
             # Send simple session update
             setup_event = {
                 "type": "session.update",
                 "session": {
-                    "instructions": "Hello",
+                    "instructions": instructions,
                     "voice": "alloy",
                     "turn_detection": None,
                     "input_audio_transcription": {
                         "model": "whisper-1"
                     },
+                    "tools": tools,
                     "tool_choice": "auto",
                     "temperature": 0.7,
                 }
             }
-            trace.append({"sent": setup_event})
+            trace.append({"sent": "setup_event"})
             await ws.send(json.dumps(setup_event))
             
             # Send response trigger
             resp_event = {"type": "response.create"}
-            trace.append({"sent": resp_event})
+            trace.append({"sent": "response.create"})
             await ws.send(json.dumps(resp_event))
             
             # Wait for replies

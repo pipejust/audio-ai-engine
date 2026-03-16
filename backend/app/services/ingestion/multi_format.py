@@ -24,8 +24,8 @@ class MultiFormatIngestor:
         # Database initialization has been moved to main.py
         pass
         
-    def _log_source(self, project_id: str, source_type: str, source_name: str, file_url: str = None):
-        """Registra un nuevo archivo ingestado en la base de datos relacional usando SQLAlchemy"""
+    def _create_source(self, project_id: str, source_type: str, source_name: str, file_url: str = None) -> int:
+        """Crea un registro en estado 'processing' y retorna su ID"""
         from app.db.session import SessionLocal
         from app.db.models import TrainingSource
 
@@ -35,57 +35,98 @@ class MultiFormatIngestor:
                 project_id=project_id,
                 source_type=source_type,
                 source_name=source_name,
-                status="indexed",
+                status="processing",
                 file_url=file_url
             )
             db.add(new_source)
             db.commit()
-            print(f"📝 Auditoría: Registrada nueva fuente de conocimiento '{source_name}' para el proyecto '{project_id}'.")
+            db.refresh(new_source)
+            print(f"📝 Auditoría: Iniciando procesamiento de '{source_name}' (ID: {new_source.id})")
+            return new_source.id
         except Exception as e:
             db.rollback()
-            print(f"❌ Error al registrar en BD: {e}")
+            print(f"❌ Error al crear registro en BD: {e}")
+            return None
+        finally:
+            db.close()
+
+    def _update_source_status(self, source_id: int, status: str):
+        if not source_id:
+            return
+        from app.db.session import SessionLocal
+        from app.db.models import TrainingSource
+        db = SessionLocal()
+        try:
+            source = db.query(TrainingSource).filter(TrainingSource.id == source_id).first()
+            if source:
+                source.status = status
+                db.commit()
+                print(f"📝 Auditoría: Estado actualizado a '{status}' para fuente ID {source_id}.")
+        except Exception as e:
+            db.rollback()
+            print(f"❌ Error actualizando estado en BD: {e}")
         finally:
             db.close()
 
     def process_file_content(self, file_content: bytes, filename: str, ext: str, project_id: str = "default", file_url: str = None):
         """Procesa el contenido de un documento (bytes) y lo envía a la base vectorial"""
         import gc
+        import traceback
+        import sys
         print(f"📄 Procesando contenido de archivo: {filename} ({ext}) para proyecto: {project_id}")
         
-        metadata = {"source": filename, "type": ext, "project_id": project_id}
-        if file_url:
-            metadata["file_url"] = file_url
+        source_id = self._create_source(project_id, ext, filename, file_url=file_url)
+        
+        try:
+            metadata = {"source": filename, "type": ext, "project_id": project_id}
+            if file_url:
+                metadata["file_url"] = file_url
 
-        text_content_list = []
-        if ext == 'txt':
-            text_content_list.append(file_content.decode('utf-8'))
-        elif ext == 'pdf':
-            import io
-            reader = PdfReader(io.BytesIO(file_content))
-            for page in reader.pages:
-                text_content_list.append(page.extract_text() + "\n")
-            del reader
-        elif ext == 'csv':
-            import io
-            df = pd.read_csv(io.BytesIO(file_content))
-            # Convierte cada fila en un texto estructurado
-            text_content_list.append(df.to_string())
-            del df
-        else:
-            print(f"Formato no soportado: {ext}")
-            return
+            if ext == 'txt':
+                text_content = file_content.decode('utf-8')
+                self._split_and_store(text_content, metadata)
+                del text_content
+            elif ext == 'pdf':
+                import io
+                reader = PdfReader(io.BytesIO(file_content))
+                
+                # Para evitar OOM en archivos grandes de cientos de páginas, dividimos el procesamiento
+                pages_batch = []
+                for i, page in enumerate(reader.pages):
+                    pages_batch.append(page.extract_text() + "\n")
+                    
+                    if len(pages_batch) >= 15 or i == len(reader.pages) - 1:
+                        batch_text = "".join(pages_batch)
+                        if batch_text.strip():
+                            self._split_and_store(batch_text, metadata)
+                        pages_batch = []
+                        gc.collect()
+                del reader
+            elif ext == 'csv':
+                import io
+                df = pd.read_csv(io.BytesIO(file_content))
+                text_content = df.to_string()
+                self._split_and_store(text_content, metadata)
+                del df
+                del text_content
+            else:
+                print(f"Formato no soportado: {ext}")
+                self._update_source_status(source_id, "error")
+                return
+                
+            del file_content
+            gc.collect()
             
-        text_content = "".join(text_content_list)
-        
-        # Free heavy variables before executing the ML model insertion
-        del text_content_list
-        del file_content
-        gc.collect()
-        
-        self._split_and_store(text_content, metadata)
-        
-        # Guardar en base de datos para auditoría
-        self._log_source(project_id, ext, filename, file_url=file_url)
+            self._update_source_status(source_id, "indexed")
+            
+        except Exception as e:
+            print(f"❌ Error CRÍTICO procesando {filename}: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            import logging
+            logging.getLogger("uvicorn.error").error(f"Error procesando documento {filename}: {e}\n{traceback.format_exc()}")
+            self._update_source_status(source_id, "error")
+            del file_content
+            gc.collect()
     def process_text(self, text: str, project_id: str = "default", split: bool = True):
         """Recibe texto libre y lo envía a la base vectorial"""
         if not text.strip():
@@ -93,19 +134,28 @@ class MultiFormatIngestor:
             return
             
         print(f"✍️ Procesando texto libre para proyecto: {project_id} (Split={split})")
-        metadata = {"source": "manual_input", "type": "text", "project_id": project_id}
         
-        if split:
-            self._split_and_store(text, metadata)
-        else:
-            from langchain_core.documents import Document
-            doc = Document(page_content=text, metadata=metadata)
-            self.vector_store.add_documents([doc])
-            print(f"✅ 1 documento integro guardado en la BD Vectorial.")
-            
-        # Guardar en base de datos para auditoría
         snippet = str(text)[:30] + "..." if len(text) > 30 else text
-        self._log_source(project_id, "text", f"Texto Manual: {snippet}")
+        source_id = self._create_source(project_id, "text", f"Texto Manual: {snippet}")
+        
+        try:
+            metadata = {"source": "manual_input", "type": "text", "project_id": project_id}
+            
+            if split:
+                self._split_and_store(text, metadata)
+            else:
+                from langchain_core.documents import Document
+                doc = Document(page_content=text, metadata=metadata)
+                self.vector_store.add_documents([doc])
+                print(f"✅ 1 documento integro guardado en la BD Vectorial.")
+                
+            self._update_source_status(source_id, "indexed")
+        except Exception as e:
+            import traceback
+            import sys
+            import logging
+            logging.getLogger("uvicorn.error").error(f"Error procesando texto manual: {e}\n{traceback.format_exc()}")
+            self._update_source_status(source_id, "error")
 
     def _split_and_store(self, text: str, metadata: dict):
         """Divide el texto en chunks y los guarda en ChromaDB"""

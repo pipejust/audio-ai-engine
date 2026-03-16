@@ -4,7 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MaVo v1 - Realtime Voice AI</title>
+    <title>Panel de Entrenamiento IA - Busco Fácil</title>
+    <meta name="description" content="Dashboard de administración y entrenamiento para el asistente virtual de Busco Fácil. Gestiona el conocimiento y documentos para generar cotizaciones TI.">
+    <meta name="keywords" content="entrenamiento IA, panel de control, Busco Fácil, gestión de conocimiento, cotizaciones TI">
+    <meta name="robots" content="noindex, nofollow"> <!-- Generalmente los dashboards privados no se indexan -->
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Panel de Entrenamiento IA - Busco Fácil">
+    <meta property="og:description" content="Administración del conocimiento IA para Busco Fácil.">
+    <meta property="og:type" content="website">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -255,6 +263,34 @@
 
         </div>
 
+        <div class="panel flex flex-col w-full">
+            <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Configuración Envío de Correos (SMTP / Resend)</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Host SMTP</label>
+                    <input type="text" id="smtp-host" placeholder="smtp.resend.com">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Puerto</label>
+                    <input type="number" id="smtp-port" placeholder="465" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Usuario</label>
+                    <input type="text" id="smtp-user" placeholder="resend">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">API Key / Contraseña</label>
+                    <input type="password" id="smtp-pass" placeholder="re_xxxxx..." class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-slate-400">Remitente (From Emal)</label>
+                    <input type="text" id="smtp-from" placeholder="ventas@tudominio.com">
+                </div>
+            </div>
+            <div id="smtp-notif" class="notification"></div>
+            <button class="btn" onclick="saveSmtpConfig()">Guardar Configuración SMTP</button>
+        </div>
+
         <!-- Sources Table -->
         <div class="panel flex flex-col w-full">
             <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Archivos Entrenados (Memoria)</h2>
@@ -287,8 +323,8 @@
         const tBox = document.getElementById('t-box');
         const tContent = document.getElementById('transcript-content');
 
-        let currentToken = localStorage.getItem('access_token');
-        let currentProject = localStorage.getItem('project_id');
+        let currentToken = null;
+        let currentProject = null;
 
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const RENDER_API = 'https://moshwasi-audio-api.onrender.com';
@@ -673,6 +709,56 @@
             }
         }
 
+        async function loadSmtpConfig() {
+            const pid = currentProject || 'buscofacil';
+            try {
+                const res = await fetch(`${API_BASE}/settings/smtp?project_id=${pid}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('smtp-host').value = data.smtp_host || 'smtp.resend.com';
+                    document.getElementById('smtp-port').value = data.smtp_port || 465;
+                    document.getElementById('smtp-user').value = data.smtp_user || 'resend';
+                    document.getElementById('smtp-from').value = data.from_email || '';
+                    document.getElementById('smtp-pass').value = '';
+                }
+            } catch (e) {
+                console.error("Error loading SMTP", e);
+            }
+        }
+
+        async function saveSmtpConfig() {
+            const pid = currentProject || 'buscofacil';
+            const payload = {
+                project_id: pid,
+                smtp_host: document.getElementById('smtp-host').value,
+                smtp_port: parseInt(document.getElementById('smtp-port').value) || 465,
+                smtp_user: document.getElementById('smtp-user').value,
+                smtp_pass: document.getElementById('smtp-pass').value,
+                from_email: document.getElementById('smtp-from').value
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/settings/smtp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}` 
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showNotification('smtp-notif', '✅ Configuración SMTP guardada correctamente.');
+                } else {
+                    throw new Error("Server error");
+                }
+            } catch (e) {
+                showNotification('smtp-notif', '❌ Error guardando configuración SMTP.', true);
+            }
+        }
+
         function updateUIForProject() {
             // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
             // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
@@ -747,7 +833,11 @@
                 listEl.innerHTML = sources.map(s => `
                     <tr class="border-b border-slate-700/50 hover:bg-slate-800/50">
                         <td class="p-3 text-slate-400">#${s.id}</td>
-                        <td class="p-3"><span class="bg-blue-900/50 text-blue-400 px-2 py-1 rounded text-xs">${s.source_type}</span></td>
+                        <td class="p-3">
+                            <span class="bg-blue-900/50 text-blue-400 px-2 py-1 rounded text-xs">${s.source_type}</span>
+                            ${s.status === 'processing' ? '<span class="bg-yellow-900/50 text-yellow-400 px-2 py-1 rounded text-xs ml-2 animate-pulse">Procesando...</span>' : ''}
+                            ${s.status === 'error' ? '<span class="bg-red-900/50 text-red-400 px-2 py-1 rounded text-xs ml-2">Error</span>' : ''}
+                        </td>
                         <td class="p-3 truncate max-w-xs" title="${s.source_name}">${s.source_name}</td>
                         <td class="p-3 text-slate-400 text-xs">${new Date(s.timestamp).toLocaleDateString()}</td>
                         <td class="p-3 text-right">
@@ -782,16 +872,22 @@
         }
 
         function checkAuth() {
-            if (currentToken) {
+            currentToken = localStorage.getItem('access_token');
+            currentProject = localStorage.getItem('project_id');
+            // Validamos que no sean strings inválidas por un error previo
+            if (currentToken && currentToken !== 'undefined' && currentToken !== 'null') {
                 loginContainer.classList.add('hidden');
                 appContainer.classList.remove('hidden');
                 logoutBtn.classList.remove('hidden');
                 updateUIForProject();
                 loadSources();
+                loadSmtpConfig();
             } else {
                 loginContainer.classList.remove('hidden');
                 appContainer.classList.add('hidden');
                 logoutBtn.classList.add('hidden');
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('project_id');
             }
         }
 

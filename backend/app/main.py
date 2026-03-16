@@ -38,6 +38,8 @@ class PrintToLogger:
             logger.info(message.strip())
     def flush(self): pass
 sys.stdout = PrintToLogger()
+
+def sync_wasi_on_startup():
     try:
         logger.info("🔄 Inicializando sincronización de WASI automática...")
         wasi = WasiAPI()
@@ -112,11 +114,12 @@ app.add_middleware(
 agent_manager = AgentManager()
 app.state.agent_manager = agent_manager
 
-from app.routers import upload, auth, tools
+from app.routers import upload, auth, tools, settings
 
 app.include_router(upload.router)
 app.include_router(auth.router)
 app.include_router(tools.router, prefix="/api/tools")
+app.include_router(settings.router)
 
 
 class ChatRequest(BaseModel):

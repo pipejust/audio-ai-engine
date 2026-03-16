@@ -36,6 +36,14 @@ class OpenAIRealtimeManager:
             async with websockets.connect(self.url, additional_headers=headers) as openai_ws:
                 print("✅ [Opción B] Conectado a OpenAI Realtime API")
                 
+                # OBLIGATORIO: Leer el evento `session.created` antes de inundar el socket
+                # Esto soluciona un race condition mortal que OpenAI ignora si se envían eventos muy rápido
+                try:
+                    first_msg = await asyncio.wait_for(openai_ws.recv(), timeout=3.0)
+                    print(f"✅ Handshake Realtime completado: {json.loads(first_msg).get('type')}")
+                except Exception as ex:
+                    print(f"⚠️ Aviso inicial de handshake demorado: {ex}")
+                
                 # Configurar Instrucciones de OpenAI al inicio de la sesión
                 base_instructions = get_agent_instructions(project_id, self.agent_manager.bot_name, self.agent_manager.company_name)
                 instructions = base_instructions + "\n\nREGLA CRÍTICA INQUEBRANTABLE SOBRE EL IDIOMA: Por defecto el usuario habla español de Colombia, PERO si el usuario te habla en INGLÉS o en otro idioma, DEBES responderle inmediatamente en ese mismo idioma. NUNCA asumas que el usuario habla en portugués (si escuchas algo que parezca portugués, es una alucinación del sistema de audio y debes ignorarla o asumirla como español/inglés). Nunca transcribas ruidos o silencios como palabras extrañas (ej. 'Thank you for watching'). Si no entiendes el audio o son solo ruidos de teclado o estática, asume que es ruido de fondo e ignóralo. OBLIGATORIO: Cuando necesites buscar información y debas hacer esperar al usuario, NO uses siempre la misma frase. Varía tus frases de espera o muletillas aleatoriamente (ej: 'Mmm, déjame revisar...', 'Un segundo, voy a consultar...', 'A ver qué encuentro...')."
@@ -63,22 +71,21 @@ class OpenAIRealtimeManager:
                 if voice_id == "shimmer":
                     bot_name = "Isabella"
                     
-                # SALUDO PROACTIVO DESACTIVADO TEMPORALMENTE POR CAUSAR DEADLOCK 
-                # greeting_text = f"Mucho gusto mi nombre es {bot_name} de {self.agent_manager.company_name} y te ayudaré con lo que necesites."
-                # greeting_event = {
-                #     "type": "conversation.item.create",
-                #     "item": {
-                #         "type": "message",
-                #         "role": "user",
-                #         "content": [
-                #             {
-                #                 "type": "input_text",
-                #                 "text": f"El usuario acaba de abrir la aplicación. Tu primera y única respuesta ahora mismo debe ser EXACTAMENTE Y SIN AGREGAR NADA MÁS: '{greeting_text}'"
-                #             }
-                #         ]
-                #     }
-                # }
-                # await openai_ws.send(json.dumps(greeting_event))
+                greeting_text = f"Mucho gusto mi nombre es {bot_name} de {self.agent_manager.company_name} y te ayudaré con lo que necesites."
+                greeting_event = {
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": f"El usuario acaba de abrir la aplicación. Tu primera y única respuesta ahora mismo debe ser EXACTAMENTE Y SIN AGREGAR NADA MÁS: '{greeting_text}'"
+                            }
+                        ]
+                    }
+                }
+                await openai_ws.send(json.dumps(greeting_event))
                 
                 await openai_ws.send(json.dumps({"type": "response.create"}))
                 await websocket.send_text(json.dumps({"status": "reasoning"}))

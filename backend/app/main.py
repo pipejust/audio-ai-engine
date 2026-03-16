@@ -62,6 +62,8 @@ def sync_wasi_on_startup():
                 break
         
         if all_properties:
+            print(f"Ingestando {len(all_properties)} propiedades en bloque al RAG...")
+            docs_to_add = []
             # Ingertar cada propiedad como un bloque de texto independiente en el RAG
             for prop in all_properties:
                 formatted_data = wasi.format_property_for_rag(prop)
@@ -71,7 +73,10 @@ def sync_wasi_on_startup():
                     metas["project_id"] = project_id
                     
                     doc = Document(page_content=text, metadata=metas)
-                    vector_store.add_documents([doc])
+                    docs_to_add.append(doc)
+            
+            if docs_to_add:
+                vector_store.add_documents(docs_to_add)
             
             print(f"✅ Sincronización WASI completada: {len(all_properties)} propiedades vectorizadas.")
         else:

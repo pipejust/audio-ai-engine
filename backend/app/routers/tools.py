@@ -174,7 +174,12 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return {"status": "error", "result_text": f"Hubo un fallo generando el PDF o enviando el correo. Informale de esto al usuario. Detalle técnico: {e}"}
+            err_msg = str(e)
+            if "validation" in err_msg.lower() or "unauthorized" in err_msg.lower() or "invalid" in err_msg.lower():
+                inform_text = "Dile al usuario: 'No pude enviar el correo porque parece que tu clave de Resend es inválida o el dominio de tu correo no está verificado en su plataforma. Por favor, revisa la configuración SMTP en el panel'."
+            else:
+                inform_text = f"Dile al usuario: 'Hubo un problema técnico enviando el correo. Detalle: {err_msg}'"
+            return {"status": "error", "result_text": inform_text}
         
     else:
         raise HTTPException(status_code=404, detail="Tool not found")

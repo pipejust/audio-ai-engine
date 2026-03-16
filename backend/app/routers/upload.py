@@ -119,6 +119,7 @@ async def upload_wasi(
             return {"message": "No se encontraron propiedades en Wasi o hubo un error."}
             
         from langchain_core.documents import Document
+        docs_to_add = []
         
         # Ingertar cada propiedad como un bloque de texto independiente en el RAG
         for prop in all_properties:
@@ -129,7 +130,10 @@ async def upload_wasi(
                 metas["project_id"] = project_id
                 
                 doc = Document(page_content=text, metadata=metas)
-                vector_store.add_documents([doc])
+                docs_to_add.append(doc)
+                
+        if docs_to_add:
+            vector_store.add_documents(docs_to_add)
                 
         return {
             "message": f"Sincronizadas y vectorizadas {len(all_properties)} propiedades desde Wasi exitosamente", 

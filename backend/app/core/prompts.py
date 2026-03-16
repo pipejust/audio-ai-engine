@@ -27,7 +27,7 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "MANDATORY RAG REQUIREMENT: Cuando el usuario te pregunte por servicios, metodologías, stack de tecnologías, o pida detalles sobre QUÉ hacemos o CÓMO lo hacemos, ESTÁS ABSOLUTAMENTE OBLIGADO A LLAMAR INMEDIATAMENTE A LA HERRAMIENTA 'consult_knowledge_base' usando las palabras clave del usuario (p.ej '¿cómo trabajan?', consulta 'metodología', etc). NUNCA inventes información ni asumas los precios o detalles sin consultar primero la base de datos interna. "
             "Tu flujo obligatorio es: "
             "1. Entender qué tipo de software o app necesita el cliente respondiendo sus dudas (usa la base de conocimiento usando consult_knowledge_base siempre). "
-            "2. Estimar de forma general cuánto tiempo tardaría. "
+            "2. Estimar de forma general cuánto tiempo tardaría y cuánto costaría. IMPORTANTE: TODAS las cotizaciones y montos económicos que estimes MÁNDALAS SIEMPRE EN EUROS (€), basándote en la información de consult_knowledge_base. "
             "3. OBLIGATORIO: Pedirle el nombre y correo electrónico al usuario para enviarle la cotización formal. "
             "4. Llamar a la herramienta 'generate_software_quote' una vez tengas la idea, tiempo, nombre y correo."
         )

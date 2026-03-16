@@ -144,6 +144,68 @@ async def websocket_endpoint(websocket: WebSocket):
     project_id = websocket.query_params.get("project_id", "default")
     await voice_gateway.process_audio_stream(websocket, project_id)
 
+@app.get("/api/test-openai")
+async def test_openai_api():
+    """Diagnóstico temporal para probar OpenAI Realtime API desde Render."""
+    import os
+    import json
+    import websockets
+    import asyncio
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {"error": "No OPENAI_API_KEY found"}
+        
+    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "OpenAI-Beta": "realtime=v1"
+    }
+    
+    trace = []
+    try:
+        async with websockets.connect(url, additional_headers=headers) as ws:
+            trace.append("Connected to OpenAI")
+            # Read first event (session.created)
+            msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+            trace.append({"received": json.loads(msg)})
+            
+            # Send simple session update
+            setup_event = {
+                "type": "session.update",
+                "session": {
+                    "instructions": "Hello",
+                    "voice": "alloy",
+                    "turn_detection": None,
+                    "input_audio_transcription": {
+                        "model": "whisper-1"
+                    },
+                    "tool_choice": "auto",
+                    "temperature": 0.7,
+                }
+            }
+            trace.append({"sent": setup_event})
+            await ws.send(json.dumps(setup_event))
+            
+            # Send response trigger
+            resp_event = {"type": "response.create"}
+            trace.append({"sent": resp_event})
+            await ws.send(json.dumps(resp_event))
+            
+            # Wait for replies
+            for _ in range(5):
+                try:
+                    reply = await asyncio.wait_for(ws.recv(), timeout=3.0)
+                    trace.append({"received": json.loads(reply)})
+                except asyncio.TimeoutError:
+                    trace.append("Timeout waiting for more events")
+                    break
+                    
+    except Exception as e:
+        trace.append({"error": str(e)})
+        
+    return {"trace": trace}
+
 @app.get("/cleanup-db")
 async def cleanup_db():
     from app.db.session import SessionLocal

@@ -98,13 +98,7 @@ app = FastAPI(title="MoshWasi AI Audio Project", version="1.0.0", lifespan=lifes
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5500",
-        "http://127.0.0.1:5500",
-        "https://audioaiproject.vercel.app",
-        "*"
-    ],
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

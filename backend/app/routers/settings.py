@@ -28,7 +28,7 @@ class SmtpConfigResponse(BaseModel):
     smtp_port: int
     smtp_user: str
     from_email: str
-    # No devolvemos la contraseña por seguridad en el response
+    smtp_pass: str
     
     class Config:
         from_attributes = True
@@ -44,7 +44,8 @@ def get_smtp_settings(project_id: str, db: Session = Depends(get_db)):
             smtp_host="smtp.resend.com",
             smtp_port=465,
             smtp_user="resend",
-            from_email=""
+            from_email="",
+            smtp_pass=""
         )
     return settings
 

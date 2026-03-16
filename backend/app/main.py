@@ -145,6 +145,45 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     await voice_gateway.connect(websocket)
     await voice_gateway.process_audio_stream(websocket, auth_project_id)
 
+@app.get("/cleanup-db")
+async def cleanup_db():
+    from app.db.session import SessionLocal
+    from app.db.models import TrainingSource
+    from app.services.vector_store import VectorStoreManager
+    db = SessionLocal()
+    records = db.query(TrainingSource).filter(TrainingSource.project_id == 'buscofacil').all()
+    to_delete = []
+    names = []
+    for r in records:
+        name_lower = r.source_name.lower() if r.source_name else ""
+        if 'investigaci' in name_lower or 'xkape' in name_lower or 'ti' in name_lower or 'cotizacion' in name_lower:
+            to_delete.append(r)
+            names.append(r.source_name or "Unknown")
+    
+    if not to_delete:
+        db.close()
+        return {"msg": "No hay nada que borrar"}
+        
+    vs = VectorStoreManager()
+    deleted_vectors = 0
+    
+    for r in to_delete:
+        try:
+            if vs.vectorstore:
+                collection = getattr(vs.vectorstore, '_collection', None)
+                if collection:
+                    results = collection.get(where={"$and": [{"project_id": r.project_id}, {"source": r.source_name}]})
+                    if results and results.get('ids'):
+                        collection.delete(ids=results['ids'])
+                        deleted_vectors += len(results['ids'])
+        except Exception as e:
+            pass
+        db.delete(r)
+        
+    db.commit()
+    db.close()
+    return {"msg": "Limpieza OK", "deleted": names, "vectors_deleted": deleted_vectors}
+
 # Servir estáticamente los frontends para entorno local
 import os
 frontend_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))

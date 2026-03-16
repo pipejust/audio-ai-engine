@@ -25,3 +25,4 @@ PyPDF2==3.0.0
 pandas==2.2.1
 langchain-text-splitters==0.0.1
 pydub==0.25.1
+audioop-lts==0.2.2

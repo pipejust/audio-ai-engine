@@ -17,11 +17,27 @@ from app.services.wasi_api import WasiAPI
 from app.services.vector_store import VectorStoreManager
 from langchain_core.documents import Document
 import logging
+from io import StringIO
 
-logging.basicConfig(level=logging.INFO)
+log_stream = StringIO()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("uvicorn.error")
 
-def sync_wasi_on_startup():
+# Custom handler for our buffer
+stream_handler = logging.StreamHandler(log_stream)
+stream_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
+
+# Redirect standard prints to the logger so we catch everything
+import sys
+class PrintToLogger:
+    def write(self, message):
+        if message.strip():
+            logger.info(message.strip())
+    def flush(self): pass
+sys.stdout = PrintToLogger()
     try:
         logger.info("🔄 Inicializando sincronización de WASI automática...")
         wasi = WasiAPI()
@@ -285,6 +301,10 @@ async def test_websocket_openai(websocket: WebSocket):
                     break
     except Exception as e:
         await websocket.send_text(f"Error: {e}")
+
+@app.get("/api/logs")
+async def get_memory_logs():
+    return {"logs": log_stream.getvalue().split("\n")[-100:]}
 
 @app.get("/cleanup-db")
 async def cleanup_db():

@@ -337,6 +337,8 @@ class OpenAIRealtimeManager:
                         
                     filler_prompt = f"OBLIGATORIO: Dile al usuario EXACTAMENTE esta frase rápido con voz muy natural de COLOMBIANO NATIVO para hacerlo esperar mientras busco: '{muletilla}'"
                     await openai_ws.send(json.dumps({"type": "conversation.item.create", "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": filler_prompt}]}}))
+                    
+                    self.response_in_progress = True
                     await openai_ws.send(json.dumps({"type": "response.create"}))
                     
                     # 2. Despachar la ejecución de la Herramienta al Background
@@ -367,7 +369,7 @@ class OpenAIRealtimeManager:
             }
             
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=10.0)
+                response = await client.post(url, json=payload, timeout=30.0)
                 
             if response.status_code == 200:
                 data = response.json()

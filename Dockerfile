@@ -1,11 +1,12 @@
 FROM python:3.11-slim
 
-# Instalar dependencias del sistema necesarias para compilar paquetes ML (Chroma, etc)
+# Instalar dependencias del sistema necesarias para compilar paquetes ML (Chroma, etc) y procesar audio
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     sqlite3 \
     libsqlite3-dev \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -181,10 +181,21 @@ class OpenAIRealtimeManager:
             while True:
                 message = await openai_ws.recv()
                 event = json.loads(message)
+                
+                # REPORTE DE DEPURACIÓN HACIA EL CLIENTE
+                try:
+                    await client_ws.send_text(json.dumps({"status": "debug_openai", "event_type": event["type"]}))
+                except Exception:
+                    pass
+                    
                 # DEBUG: Imprimir mensajes ignorados para ver si OpenAI está tirando errores silenciosos
                 if event["type"] not in ["response.audio.delta", "response.audio_transcript.delta"]:
                     if event["type"] == "error":
                         print(f"🚨 OPENAI REALTIME ERROR: {event}")
+                        await client_ws.send_text(json.dumps({
+                            "status": "error",
+                            "message": f"Error de OpenAI: {event.get('error', {}).get('message', 'Desconocido')}"
+                        }))
                 
                 if event["type"] == "response.audio.delta":
                     # Buffer the base64 PCM16 data instead of sending tiny unplayable WAV fragments

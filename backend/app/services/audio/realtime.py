@@ -155,7 +155,13 @@ class OpenAIRealtimeManager:
         except WebSocketDisconnect:
             print("🔌 Cliente se desconectó de la Opción B.")
         except Exception as e:
-            print(f"❌ Error procesando audio del cliente: {e}")
+            import traceback
+            err_str = traceback.format_exc()
+            print(f"❌ Error procesando audio del cliente: {err_str}")
+            try:
+                await client_ws.send_text(json.dumps({"status": "error", "message": f"ClientStream Task Crash: {e}"}))
+            except:
+                pass
 
     async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str):
         """Recibe eventos de OpenAI. Extrae el audio PCM16, lo empaqueta en WAV y se lo envía al cliente."""
@@ -315,7 +321,13 @@ class OpenAIRealtimeManager:
                     # Esto evita bloquear el bucle `recv()` y permite que el usuario ESCUCHE la muletilla generada arriba
                     asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id))
         except Exception as e:
-            print(f"Error recibiendo de OpenAI: {e}")
+            import traceback
+            err_str = traceback.format_exc()
+            print(f"Error recibiendo de OpenAI: {err_str}")
+            try:
+                await client_ws.send_text(json.dumps({"status": "error", "message": f"OpenAIStream Task Crash: {e}"}))
+            except:
+                pass
                     
     async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str):
         """

@@ -176,7 +176,6 @@ async def test_openai_api():
             instructions = base_instructions + "\n\nREGLA CRÍTICA... "
             tools = get_agent_tools(project_id)
             
-            # Send simple session update
             setup_event = {
                 "type": "session.update",
                 "session": {
@@ -194,12 +193,10 @@ async def test_openai_api():
             trace.append({"sent": "setup_event"})
             await ws.send(json.dumps(setup_event))
             
-            # Send response trigger
             resp_event = {"type": "response.create"}
             trace.append({"sent": "response.create"})
             await ws.send(json.dumps(resp_event))
             
-            # Wait for replies
             for _ in range(5):
                 try:
                     reply = await asyncio.wait_for(ws.recv(), timeout=3.0)
@@ -212,6 +209,66 @@ async def test_openai_api():
         trace.append({"error": str(e)})
         
     return {"trace": trace}
+
+@app.websocket("/ws/test-openai")
+async def test_websocket_openai(websocket: WebSocket):
+    import os
+    import json
+    import websockets
+    import asyncio
+    from app.core.prompts import get_agent_instructions, get_agent_tools
+    
+    await websocket.accept()
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "OpenAI-Beta": "realtime=v1"
+    }
+    
+    try:
+        async with websockets.connect(url, additional_headers=headers) as ws:
+            await websocket.send_text("Connected to OpenAI")
+            
+            msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+            await websocket.send_text(f"Session Created: {msg}")
+            
+            project_id = "buscofacil"
+            base_instructions = get_agent_instructions(project_id, "TestBot", "TestComp")
+            instructions = base_instructions + "\n\nREGLA CRÍTICA... "
+            tools = get_agent_tools(project_id)
+            
+            setup_event = {
+                "type": "session.update",
+                "session": {
+                    "instructions": instructions,
+                    "voice": "alloy",
+                    "turn_detection": None,
+                    "input_audio_transcription": {
+                        "model": "whisper-1"
+                    },
+                    "tools": tools,
+                    "tool_choice": "auto",
+                    "temperature": 0.7,
+                }
+            }
+            await ws.send(json.dumps(setup_event))
+            await websocket.send_text("Sent session.update")
+            
+            resp_event = {"type": "response.create"}
+            await ws.send(json.dumps(resp_event))
+            await websocket.send_text("Sent response.create")
+            
+            for _ in range(5):
+                try:
+                    reply = await asyncio.wait_for(ws.recv(), timeout=3.0)
+                    await websocket.send_text(f"OAI MSG: {reply}")
+                except asyncio.TimeoutError:
+                    await websocket.send_text("Timeout.")
+                    break
+    except Exception as e:
+        await websocket.send_text(f"Error: {e}")
 
 @app.get("/cleanup-db")
 async def cleanup_db():

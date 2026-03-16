@@ -138,3 +138,74 @@ async def upload_wasi(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sincronizando Wasi: {str(e)}")
+
+@router.get("/sources")
+async def get_sources(project_id: str):
+    """
+    Obtiene la lista de todas las fuentes de entrenamiento (documentos, textos, etc.) de un proyecto.
+    """
+    from app.db.session import SessionLocal
+    from app.db.models import TrainingSource
+    
+    db = SessionLocal()
+    try:
+        sources = db.query(TrainingSource).filter(TrainingSource.project_id == project_id).all()
+        return [
+            {
+                "id": s.id,
+                "project_id": s.project_id,
+                "source_type": s.source_type,
+                "source_name": s.source_name,
+                "status": s.status,
+                "file_url": s.file_url,
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None
+            }
+            for s in sources
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo fuentes: {str(e)}")
+    finally:
+        db.close()
+
+@router.delete("/sources/{source_id}")
+async def delete_source(source_id: int):
+    """
+    Elimina una fuente de entrenamiento tanto de la base de datos relacional como de la base vectorial.
+    """
+    from app.db.session import SessionLocal
+    from app.db.models import TrainingSource
+    
+    db = SessionLocal()
+    try:
+        # Encontrar la fuente en la base de datos
+        source = db.query(TrainingSource).filter(TrainingSource.id == source_id).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Fuente no encontrada")
+            
+        project_id = source.project_id
+        source_name = source.source_name
+        
+        # Eliminar vectores de ChromaDB
+        try:
+            if vector_store.vectorstore:
+                collection = getattr(vector_store.vectorstore, '_collection', None)
+                if collection:
+                    results = collection.get(where={"$and": [{"project_id": project_id}, {"source": source_name}]})
+                    if results and results.get('ids'):
+                        collection.delete(ids=results['ids'])
+                        print(f"🗑️ Eliminados {len(results['ids'])} vectores para {source_name}")
+        except Exception as e:
+            print(f"⚠️ Logre borrar el registro, pero error de Chroma: {e}")
+            
+        # Optional: Si es un archivo, eliminar de Supabase Storage. (Omitido por seguridad o se puede implementar si file_url existe).
+            
+        # Eliminar el registro de SQLite/Postgres
+        db.delete(source)
+        db.commit()
+        
+        return {"message": "Fuente eliminada exitosamente", "id": source_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error eliminando fuente: {str(e)}")
+    finally:
+        db.close()

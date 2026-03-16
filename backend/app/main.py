@@ -16,10 +16,14 @@ import asyncio
 from app.services.wasi_api import WasiAPI
 from app.services.vector_store import VectorStoreManager
 from langchain_core.documents import Document
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("uvicorn.error")
 
 def sync_wasi_on_startup():
     try:
-        print("🔄 Inicializando sincronización de WASI automática...")
+        logger.info("🔄 Inicializando sincronización de WASI automática...")
         wasi = WasiAPI()
         vector_store = VectorStoreManager()
         
@@ -76,7 +80,13 @@ app = FastAPI(title="MoshWasi AI Audio Project", version="1.0.0", lifespan=lifes
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "https://audioaiproject.vercel.app",
+        "*"
+    ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -125,25 +135,13 @@ openai_realtime_manager = OpenAIRealtimeManager(agent_manager)
 voice_gateway = VoiceGatewayManager(agent_manager, stt_engine, tts_engine, openai_realtime_manager)
 
 @app.websocket("/voice/stream")
-async def websocket_endpoint(websocket: WebSocket, token: str = None):
+async def websocket_endpoint(websocket: WebSocket, project_id: str = "default"):
     """
-    Endpoint de WebSocket para streaming Full Duplex.
-    Verifica JWT antes de permitir el pase al gateway.
+    Endpoint de WebSocket público para streaming Full Duplex de audio.
+    Ya no requiere JWT para permitir acceso público a la interfaz de voz.
     """
-    if not token:
-        await websocket.close(code=1008)  # Missing Token
-        return
-        
-    payload = security.verify_token(token)
-    if not payload:
-        await websocket.close(code=1008)  # Invalid Token
-        return
-        
-    # Obtener el project_id "duro" (seguro) del JWT validado
-    auth_project_id = payload.get("project_id", "default")
-
     await voice_gateway.connect(websocket)
-    await voice_gateway.process_audio_stream(websocket, auth_project_id)
+    await voice_gateway.process_audio_stream(websocket, project_id)
 
 @app.get("/cleanup-db")
 async def cleanup_db():

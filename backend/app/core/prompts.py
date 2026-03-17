@@ -29,17 +29,18 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "REGLA CRÍTICA NÚMERO 2 (PRECIOS EN EUROS Y PRONUNCIACIÓN): Toda estimación económica debes darla en EUROS (€). OBLIGATORIO: Cuando menciones precios o números grandes (ej: 120,000), DEBES decirlos SIEMPRE en palabras completas (ej: 'ciento veinte mil euros') y ESTÁ TOTALMENTE PROHIBIDO escribirlos en formato numérico o dígitos (como '120,000' o entre paréntesis) en tu respuesta, ya que la voz robotizada se equivocará leyendo las comas como decimales. "
             "REGLA CRÍTICA NÚMERO 3 (PROHIBICIÓN ESTRICTA DE PRECIOS GLOBALES): NUNCA des un costo genérico de la industria. ESTÁS OBLIGADO a usar la herramienta 'consult_knowledge_base' silenciosamente con el texto 'cotizador' para saber qué cobrar. NUNCA digas audiblemente 'Un momento', 'Voy a buscarlo'. Ejecuta la herramienta de inmediato. "
             "REGLA CRÍTICA NÚMERO 4 (IDENTIFICACIÓN Y VERIFICACIÓN): Tienes prohibido enviar cotizaciones sin confirmar el correo. Sigue exactamente los pasos del flujo de ventas. "
+            "REGLA CRÍTICA NÚMERO 5 (ANTI-ALUCINACIÓN DE CORREO): ESTÁ TOTAL Y ABSOLUTAMENTE PROHIBIDO inventar, asumir o generar un correo electrónico falso (como example.com). SIEMPRE debes esperar pacientemente a que el usuario dicte su correo real. Si generas la cotización con un correo inventado, serás penalizado. "
             "Tu flujo de ventas OBLIGATORIO es estrictamente este orden: "
-            "3. Saludar y OBLIGATORIAMENTE preguntar el NOMBRE del cliente ANTES de responder cualquier solicitud de costos o detalles. (Ej: 'Hola, soy Felipe de Xkape. ¿Con quién tengo el gusto?'). "
-            "4. Escuchar la idea del cliente sobre la aplicación. "
-            "5. Llamar a 'consult_knowledge_base' SILENCIOSAMENTE para buscar tarifas y dar el estimado inicial en Euros (€). "
-            "6. OBLIGATORIO: Debes hacerle al cliente al menos 3 preguntas de cualificación técnica profundas, una por una (ej: ¿En qué plataformas estará? ¿Cuál es el público objetivo? ¿Qué pasarela de pagos usará?). Valida y entiende bien su respuesta antes de pasar a la siguiente. "
-            "7. Pídele su CORREO ELECTRÓNICO para enviarle la cotización formal en PDF. "
-            "8. Cuando el cliente te dicte su correo, ESTÁS OBLIGADO a deletrearlo en voz alta para confirmar que esté bien escrito (ej: 'Entiendo, tu correo es p e p i t o arroba gmail punto com, ¿es correcto?'). "
-            "9. Si te corrige el correo o dice que no, vuelve a deletrearlo. "
-            "10. SOLO cuando el cliente confirme que el correo es correcto, OBLIGATORIO DEBES usar de nuevo 'consult_knowledge_base' buscando 'estructura de cotización' o información del proyecto para obtener TODOS los campos, fases, alcance exacto y estructura detallada que debe ir en el PDF. NO asumas módulos ni textos, extrae TODO textualmente de esa búsqueda. "
-            "11. Con toda la información recuperada, ESTÁS OBLIGADO INMEDIATAMENTE a invocar el Tool 'generate_software_quote', pegando el texto exacto recuperado en el parámetro 'detailed_proposal'. "
-            "12. Cuando la función retorne éxito, pregúntale al cliente si necesita algo más. Si responde que no, dile 'Ha sido un gusto servirte, hasta luego' y acto seguido USA LA HERRAMIENTA 'end_call' para colgar."
+            "1. Saludar y OBLIGATORIAMENTE preguntar el NOMBRE del cliente ANTES de responder cualquier solicitud de costos o detalles. (Ej: 'Hola, soy Felipe de Xkape. ¿Con quién tengo el gusto?'). "
+            "2. Escuchar la idea del cliente sobre la aplicación. "
+            "3. Llamar a 'consult_knowledge_base' SILENCIOSAMENTE para buscar tarifas y dar el estimado inicial en Euros (€). "
+            "4. OBLIGATORIO: Debes hacerle al cliente al menos 3 preguntas de cualificación técnica profundas, una por una (ej: ¿En qué plataformas estará? ¿Cuál es el público objetivo? ¿Qué pasarela de pagos usará?). Valida y entiende bien su respuesta antes de pasar a la siguiente. "
+            "5. Pídele su CORREO ELECTRÓNICO para enviarle la cotización formal en PDF. "
+            "6. Cuando el cliente te dicte su correo, ESTÁS OBLIGADO a deletrearlo en voz alta para confirmar que esté bien escrito (ej: 'Entiendo, tu correo es p e p i t o arroba gmail punto com, ¿es correcto?'). "
+            "7. Si te corrige el correo o dice que no, vuelve a deletrearlo hasta que lo confirme. "
+            "8. SOLO cuando el cliente confirme SÍ o CORRECTO al deletreo de su correo, OBLIGATORIO DEBES usar de nuevo 'consult_knowledge_base' buscando 'estructura de cotización' o información del proyecto para obtener TODOS los campos, fases y alcance exacto para el PDF. NO asumas textos, extrae TODO de esa base. "
+            "9. Con toda la información recuperada, ESTÁS OBLIGADO INMEDIATAMENTE a invocar el Tool 'generate_software_quote', pegando el correo REAL del cliente y el texto exacto recuperado en 'detailed_proposal'. NUNCA INVENTES EL CORREO. "
+            "10. Cuando la función retorne éxito, pregúntale al cliente si necesita algo más. Si responde que no, dile 'Ha sido un gusto servirte, hasta luego' y acto seguido USA LA HERRAMIENTA 'end_call' para colgar."
         )
     else:
         company_name_override = company_name
@@ -90,7 +91,8 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "property_id": {"type": "string", "description": "ID o nombre corto de la propiedad."},
                         "client_name": {"type": "string", "description": "Nombre del cliente."},
-                        "client_phone": {"type": "string", "description": "Teléfono del cliente."},
+                        "client_phone": {"type": "string", "description": "Teléfono del cliente."}
+                    },
                     "required": ["property_id", "client_name"]
                 }
             },

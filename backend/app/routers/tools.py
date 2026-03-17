@@ -9,10 +9,11 @@ class ToolRequest(BaseModel):
     args: Dict[str, Any]
 
 @router.post("/{function_name}")
-async def execute_tool(function_name: str, request_data: ToolRequest, request: Request):
+def execute_tool(function_name: str, request_data: ToolRequest, request: Request):
     """
     Endpoint dinámico para ejecutar herramientas.
     Este endpoint simula los Web Services externos para cada tenant.
+    Se ejecuta en un threadpool gracias a FastAPI para no bloquear el Event Loop (por smtp).
     """
     import smtplib
     from email.message import EmailMessage

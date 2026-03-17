@@ -338,23 +338,26 @@ class OpenAIRealtimeManager:
         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
         """
         import json
-        import httpx
+        import asyncio
+        from app.routers.tools import execute_tool, ToolRequest
         try:
-            # Simular petición HTTP al endpoint de herramientas
-            url = f"http://localhost:8000/api/tools/{function_name}"
-            payload = {
-                "project_id": project_id,
-                "args": args
-            }
+            tool_req = ToolRequest(project_id=project_id, args=args)
             
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=30.0)
-                
-            if response.status_code == 200:
-                data = response.json()
-                result_text = data.get("result_text", "Done.")
-            else:
-                result_text = f"Error from Web Service: {response.text}"
+            class MockState:
+                def __init__(self, am):
+                    self.agent_manager = am
+            class MockApp:
+                def __init__(self, am):
+                    self.state = MockState(am)
+            class MockRequest:
+                def __init__(self, am):
+                    self.app = MockApp(am)
+                    
+            mock_req = MockRequest(self.agent_manager)
+            
+            # Ejecutar directamente en un hilo para evitar bloqueos HTTP o timeout de IPv6 en Uvicorn
+            data = await asyncio.to_thread(execute_tool, function_name, tool_req, mock_req)
+            result_text = data.get("result_text", "Done.")
                 
             function_output = {
                 "type": "conversation.item.create", 

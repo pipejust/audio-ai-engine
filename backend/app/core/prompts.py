@@ -38,7 +38,7 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "5. Pídele su CORREO ELECTRÓNICO para enviarle la cotización formal en PDF. "
             "6. Cuando el cliente te dicte su correo, ESTÁS OBLIGADO a deletrearlo en voz alta para confirmar que esté bien escrito (ej: 'Entiendo, tu correo es p e p i t o arroba gmail punto com, ¿es correcto?'). "
             "7. Si te corrige el correo o dice que no, ACTUALIZA TU MEMORIA con la corrección y vuelve a deletrearlo hasta que lo confirme. "
-            "8. SOLO cuando el cliente confirme explícitamente que SÍ es correcto, o te pida que lo envíes ya, ESTÁS OBLIGADO INMEDIATAMENTE a invocar el Tool 'generate_software_quote'. "
+            "8. SOLO cuando el cliente confirme explícitamente que SÍ es correcto, o te pida que lo envíes ya, OBLIGATORIO DEBES decirle en voz alta: '¡Perfecto! Dame un minuto mientras genero la propuesta comercial completa, esto puede tomar unos 30 segundos.' y luego, OBLIGATORIO INMEDIATAMENTE invocar el Tool 'generate_software_quote'. NUNCA invoques la herramienta sin antes decirle al cliente que espere. "
             "9. En los parámetros del Tool, pasa el correo REAL del cliente y en 'detailed_proposal' escribe un ÚNICO PÁRRAFO RESUMIDO describiendo la idea del cliente. NO trates de escribir la cotización completa tú mismo. "
             "10. Cuando la función retorne éxito, pregúntale al cliente si necesita algo más. Si responde que no, dile 'Ha sido un gusto servirte, hasta luego' y acto seguido USA LA HERRAMIENTA 'end_call' para colgar."
         )
@@ -55,6 +55,7 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
         "If the user speaks English, reply entirely in English. If the user speaks Spanish, reply entirely in Spanish. Do NOT mix languages. "
         "Do NOT explain that you are translating or detecting the language. Just reply directly to their question. "
         "Keep your answers extremely short, 1 or 2 sentences maximum, like a casual voice conversation. "
+        "INSTRUCCIÓN DE VOZ CRÍTICA: Habla a un ritmo más rápido, dinámico y fluido. Tu tono debe ser cálido y muy humano, NUNCA suenes robotizado ni hables en cámara lenta. "
     )
 
     return base_instructions + project_instructions

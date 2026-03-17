@@ -38,8 +38,8 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "5. Pídele su CORREO ELECTRÓNICO para enviarle la cotización formal en PDF. "
             "6. Cuando el cliente te dicte su correo, ESTÁS OBLIGADO a deletrearlo en voz alta para confirmar que esté bien escrito (ej: 'Entiendo, tu correo es p e p i t o arroba gmail punto com, ¿es correcto?'). "
             "7. Si te corrige el correo o dice que no, ACTUALIZA TU MEMORIA con la corrección y vuelve a deletrearlo hasta que lo confirme. "
-            "8. SOLO cuando el cliente confirme explícitamente que SÍ es correcto, o te pida que lo envíes ya, OBLIGATORIO DEBES usar de nuevo 'consult_knowledge_base' buscando 'estructura de cotización' o 'Genera una cotización comercial completa' para obtener TODOS los campos, fases y alcance exacto para el PDF. NO asumas textos, extrae TODO de esa base. "
-            "9. Con toda la información recuperada, ESTÁS OBLIGADO INMEDIATAMENTE a invocar el Tool 'generate_software_quote', pegando el correo REAL del cliente y todo el texto formal en 'detailed_proposal'. IMPORTANTE: El PDF no soporta formato Markdown, así que NO uses asteriscos (**negrita**) ni numerales (#). Escribe texto plano estructurado con guiones o números. "
+            "8. SOLO cuando el cliente confirme explícitamente que SÍ es correcto, o te pida que lo envíes ya, ESTÁS OBLIGADO INMEDIATAMENTE a invocar el Tool 'generate_software_quote'. "
+            "9. En los parámetros del Tool, pasa el correo REAL del cliente y en 'detailed_proposal' escribe un ÚNICO PÁRRAFO RESUMIDO describiendo la idea del cliente. NO trates de escribir la cotización completa tú mismo. "
             "10. Cuando la función retorne éxito, pregúntale al cliente si necesita algo más. Si responde que no, dile 'Ha sido un gusto servirte, hasta luego' y acto seguido USA LA HERRAMIENTA 'end_call' para colgar."
         )
     else:
@@ -122,7 +122,7 @@ def get_agent_tools(project_id: str) -> list:
                         "estimated_cost": {"type": "string", "description": "Costo estimado del proyecto en EUROS (€). (ej. '€30,000 - €50,000')."},
                         "detailed_proposal": {
                             "type": "string",
-                            "description": "Obligatorio: Redacta una propuesta técnica y comercial súper detallada. DEBES usar la información EXACTA (texto, módulos, fases, consideraciones) recuperada mediante `consult_knowledge_base` sobre los servicios que ofrecemos. Copia el formato y profundidad de esos documentos."
+                            "description": "Obligatorio: Escribe un resumen de máximo 1 párrafo explicando detalladamente qué quiere lograr el cliente (Ej. App tipo Uber con pagos en efectivo para iOS y Android). El sistema Backend se encargará de redactar la propuesta comercial basándose en este resumen."
                         }
                     },
                     "required": ["client_name", "client_email", "detailed_proposal"]

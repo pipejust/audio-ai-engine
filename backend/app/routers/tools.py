@@ -175,6 +175,30 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             safe_cost = estimated_cost.replace("€", "EUR")
             
             if detailed_proposal:
+                # Disparar Langchain para escalar el resumen corto a una propuesta de 16 Puntos
+                from langchain_openai import ChatOpenAI
+                from langchain_core.messages import SystemMessage, HumanMessage
+                import os
+                
+                # Cargar el prompt gigante documentado por el usuario
+                template_path = os.path.join(os.path.dirname(__file__), "../cotizacion_prompt_template.txt")
+                if os.path.exists(template_path):
+                    with open(template_path, "r", encoding="utf-8") as f:
+                        system_prompt_text = f.read()
+                else:
+                    system_prompt_text = "Eres un redactor comercial experto. Escribe una propuesta detallada corporativa muy profesional de 16 secciones."
+                
+                llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+                
+                messages = [
+                    SystemMessage(content=system_prompt_text),
+                    HumanMessage(content=f"Genera exactamente ÚNICAMENTE el texto Bloque 1 (Cotización PDF) basado en estos datos:\nCliente: {name}\nCorreo: {email}\nProyecto Corto: {project_details}\nTiempo: {estimated_time}\nCosto: {safe_cost}\nResumen del Asesor (Voz): {detailed_proposal}")
+                ]
+                print("⏳ Llamando a GPT-4o para redactar la propuesta comercial formal (16 Puntos)...")
+                llm_response = llm.invoke(messages)
+                
+                full_proposal = llm_response.content
+                
                 pdf.set_fill_color(*color_heading)
                 pdf.set_text_color(255, 255, 255)
                 pdf.set_font(family, "B", size)
@@ -182,16 +206,13 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 pdf.set_text_color(*color_text)
                 pdf.set_font(family, "", size)
-                # Cleanup chars that break FPDF's default latin-1 and strip basic markdown
-                safe_proposal = detailed_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("**", "").replace("*", "").replace("# ", "")
-                safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
-                pdf.multi_cell(0, 6, safe_proposal)
-                pdf.ln(5)
                 
-                pdf.set_fill_color(240, 240, 240)
-                pdf.set_font(family, "B", size)
-                pdf.multi_cell(0, 8, f"Resumen: {project_details}\\nTiempo Estimado: {estimated_time}\\nInversión Aproximada: {safe_cost}", fill=True)
-                pdf.ln(10)
+                # Cleanup chars that break FPDF's default latin-1, but KEEP the asterisks for markdown=True
+                safe_proposal = full_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("# ", "").replace("## ", "").replace("### ", "")
+                safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
+                
+                pdf.multi_cell(0, 6, safe_proposal, markdown=True)
+                pdf.ln(5)
             else:
                 # Details block with background
                 pdf.set_fill_color(*color_heading)

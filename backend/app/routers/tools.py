@@ -179,11 +179,13 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 from langchain_openai import ChatOpenAI
                 from langchain_core.messages import SystemMessage, HumanMessage
                 import os
+                import time
                 from datetime import datetime
                 import locale
                 try: locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
                 except: pass
                 today_str = datetime.now().strftime("%d de %B de %Y")
+                quote_code = f"COT-{int(time.time())}"
                 
                 # Cargar el prompt gigante documentado por el usuario
                 template_path = os.path.join(os.path.dirname(__file__), "../cotizacion_prompt_template.txt")
@@ -193,22 +195,53 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 else:
                     system_prompt_text = "Eres un redactor comercial experto."
                 
+                legal_text = (
+                    "\n\n--- INICIO TEXTO OBLIGATORIO AL FINAL DE LA COTIZACIÓN (Sección 17) ---\n"
+                    "Gobernanza: legal, seguridad, privacidad, validación y roadmap\n"
+                    "Consideraciones legales, de seguridad y privacidad al usar cotizaciones reales\n"
+                    "1) Datos personales y anonimización\n"
+                    "La AEPD señala que los datos anonimizados no se consideran datos personales (y por tanto no se rigen por normativa de protección de datos), pero también introduce el riesgo de reidentificación como concepto relevante. El RGPD contempla salvaguardas y menciona medidas como la seudonimización en ciertos contextos de tratamiento. Implicación para dataset: separar PII (nombres, mails, teléfonos) de datos de cotización y aplicar anonimización/seudonimización, además de evaluar riesgo de reidentificación en combinaciones de campos.\n"
+                    "2) Confidencialidad comercial\n"
+                    "Cotizaciones reales suelen contener márgenes, descuentos, condiciones negociadas, nombres de clientes y arquitectura sensible. Aun sin PII, esto puede ser secreto comercial. Recomendación: Obtener autorización contractual o generar dataset sintético derivado de plantillas. Mantener source_type y license_notes por registro, y restringir acceso por rol.\n"
+                    "3) Controles de seguridad de la plataforma de datos/modelo\n"
+                    "Para controles, puede alinearse con un catálogo de controles de seguridad y privacidad como NIST SP 800-53 (catálogo amplio de controles), y aplicar endurecimiento de acceso, cifrado, logging y segregación de entornos. Para seguridad aplicada al software que se cotiza, OWASP ASVS da una base verificable para requisitos y pruebas de controles técnicos en aplicaciones.\n"
+                    "4) Riesgo de IA y gobernanza\n"
+                    "El NIST AI RMF está planteado como recurso voluntario para gestionar riesgos de IA y promover confiabilidad, y puede servir como marco de control del ciclo de vida (diseño, despliegue, evaluación).\n"
+                    "--- FIN TEXTO OBLIGATORIO ---\n"
+                )
+
                 strict_rules = (
                     "REGLAS CRÍTICAS DE FORMATO Y CONTENIDO (OBLIGATORIAS):\n"
-                    "1. NO incluyas información bancaria ni números de cuenta de Xkape. Bórralos del formato.\n"
-                    "2. En el encabezado, usa los datos reales provistos. NUNCA escribas corchetes como '[Ciudad]' o '[Fecha]', usa los datos que te paso.\n"
-                    "3. Usa el 'Cliente' para el Nombre del Cliente y el Nombre del Contacto. Jamás uses el correo electrónico como nombre del cliente.\n"
-                    "4. Para campos del responsable comercial, cargo y teléfono de Xkape, déjalos completamente vacíos al final del documento.\n"
-                    "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento, sin saludar previamente ni usar la palabra 'Bloque 1'.\n"
-                    "6. OBLIGATORIO: El documento DEBE incluir claramente el Tiempo Estimado y la Inversión/Costo del Proyecto basándose en los datos provistos en este prompt.\n"
-                    "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Usa saltos de línea reales. Para viñetas o listas usa únicamente guiones (-). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia."
+                    "1. NO inventes información bancaria. Como no tienes los datos del banco, elimina completamente los campos 'Banco', 'Tipo de Cuenta', 'Número de Cuenta', 'Titular' y 'Correo de Confirmación de Pago'. ¡NO los imprimas con corchetes!\n"
+                    "2. En el encabezado, usa exactamente los datos provistos. NUNCA escribas corchetes como '[Ciudad]', usa los datos que te paso.\n"
+                    "3. Usa el nombre provisto para el Cliente y Contacto.\n"
+                    "4. En la Firma y Datos de Proveedor, usa EXCLUSIVAMENTE la Información Proveedor que te paso. Si 'Cargo' no existe, bórralo.\n"
+                    "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento PDF (sin metadatos ni bloque 2 o 3).\n"
+                    "6. OBLIGATORIO Y CRÍTICO: Debes incluir IMPERATIVAMENTE los valores exactos que te paso de 'Tiempo Estimado de Ejecución' y 'Costo de la Inversión'. NO pongas 'No especificado'. NO omitas los tiempos ni los precios. Es el corazón de la cotización.\n"
+                    "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia.\n"
+                    f"8. Agrega textualmente el 'TEXTO OBLIGATORIO' sobre Gobernanza al final del documento. {legal_text}"
                 )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
                 
+                human_prompt = (
+                    f"Genera exactamente ÚNICAMENTE el texto de la Cotización PDF basándote en lo siguiente:\n"
+                    f"Ciudad: Andorra\n"
+                    f"Fecha: {today_str}\n"
+                    f"Código de Cotización: {quote_code}\n"
+                    f"Nombre del Cliente: {name}\n"
+                    f"Nombre del Contacto: {name}\n"
+                    f"Correo: {email}\n"
+                    f"Proyecto Corto: {project_details}\n"
+                    f"Tiempo Estimado de Ejecución (OBLIGATORIO IMPRIMIRLO): {estimated_time}\n"
+                    f"Costo de la Inversión (OBLIGATORIO IMPRIMIRLO): {safe_cost}\n"
+                    f"Información Proveedor Comercial (Firma y Datos): Empresa {c_name}, NIT {c_id}, Tel {c_phone}, Web {c_web}\n"
+                    f"Resumen del Asesor (Lo que el cliente quiere): {detailed_proposal}\n"
+                )
+
                 messages = [
                     SystemMessage(content=system_prompt_text + "\n\n" + strict_rules),
-                    HumanMessage(content=f"Genera exactamente ÚNICAMENTE el texto de la Cotización PDF basándote en lo siguiente:\nCiudad: Andorra\nFecha: {today_str}\nNombre del Cliente: {name}\nNombre del Contacto: {name}\nCorreo: {email}\nProyecto Corto: {project_details}\nTiempo Estimado: {estimated_time}\nCosto de la Inversión: {safe_cost}\nResumen del Asesor (Lo que el cliente quiere): {detailed_proposal}")
+                    HumanMessage(content=human_prompt)
                 ]
                 print("⏳ Llamando a GPT-4o para redactar la propuesta comercial formal (16 Puntos)...")
                 llm_response = llm.invoke(messages)

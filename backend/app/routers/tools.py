@@ -121,7 +121,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 return (int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16))
                 
             color_text = hex_to_rgb_tuple(style_config.get("textColor", "#1f2937"))
-            color_heading = hex_to_rgb_tuple(style_config.get("headingColor", "#4f46e5"))
+            color_heading = hex_to_rgb_tuple("#36AA32")
             family = style_config.get("fontFamily", "helvetica").lower()
             size = int(style_config.get("fontSize", 12))
             
@@ -216,12 +216,12 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     "2. En el encabezado, usa exactamente los datos provistos. NUNCA escribas corchetes como '[Ciudad]', usa los datos que te paso.\n"
                     "3. Usa el nombre provisto para el Cliente y Contacto.\n"
                     "4. En la Firma y Datos de Proveedor, usa EXCLUSIVAMENTE la Información Proveedor que te paso. Si 'Cargo' no existe, bórralo.\n"
-                    "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento PDF (sin metadatos ni bloque 2 o 3).\n"
+                    "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento PDF (sin metadatos). NO generes un título principal al inicio como '# Cotización Comercial'. Empieza la redacción de frente.\n"
                     "6. OBLIGATORIO Y CRÍTICO: Debes incluir IMPERATIVAMENTE los valores exactos que te paso de 'Tiempo Estimado de Ejecución' y 'Costo de la Inversión'. NO pongas 'No especificado'. NO omitas los tiempos ni los precios. Es el corazón de la cotización.\n"
                     "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia.\n"
                     f"8. Agrega textualmente el 'TEXTO OBLIGATORIO' sobre Gobernanza al final del documento. {legal_text}\n"
-                    "9. MÁXIMA PRIORIDAD - DESGLOSE DE HORAS Y COSTOS: Debes construir obligatoriamente una sección EXTREMADAMENTE DETALLADA desglosando cada fase del proyecto (Planificación, Diseño, Frontend, Backend, QA, etc.). Para CADA FASE es OBLIGATORIO mostrar explícitamente las horas invertidas y la tarifa, usando estrictamente este formato: '[Nombre de la Fase] - [XX] horas a [YY] EUR/hora = [ZZ] EUR'. (Usa tarifas realistas entre 55 y 140 EUR/h).\n"
-                    "10. REGLA MATEMÁTICA ESTRICTA Y DESCUENTO: La matemática debe ser milimétricamente perfecta e irrefutable. Suma todos los costos de las fases para obtener el 'Subtotal'. Luego, obligatoriamente aplica un 'Descuento del 10%' sobre el Subtotal. Finalmente, incluye los Impuestos si aplica. El TOTAL FINAL resultante (Subtotal - Descuento + Impuestos) DEBE SER EXACTAMENTE IGUAL al 'Costo de la Inversión' que recibiste en el prompt (conviértelo en tu mente de letras a números, ej. 'ciento veinte mil' = 120,000 EUR). ¡Ajusta artificialmente las horas de las fases tras bambalinas para que al imprimir el documento, la ecuación matemática cuadre al céntimo con el Total Final!"
+                    "9. MÁXIMA PRIORIDAD - HORAS EN ALCANCE: En la sección '3. Alcance del Proyecto', describe las fases y PON ÚNICAMENTE LAS HORAS estimadas para cada fase (ej. 'Fase 1: Planificación - 40 horas'). ESTÁ ESTRICTAMENTE PROHIBIDO PONER PRECIOS, TARIFAS O SÍMBOLOS DE DINERO (EUR, $, etc.) EN LA SECCIÓN DE ALCANCE.\n"
+                    "10. REGLA MATEMÁTICA EN INVERSIÓN: Debes crear la sección '9. Inversión o Costo del Proyecto'. AQUÍ ES DONDE VAN LOS PRECIOS. Detalla obligatoriamente el costo copiando la estructura: '[Nombre Fase] - [XX] horas a [YY] EUR/hora = [ZZ] EUR'. (Usa tarifas realistas de software grande entre 55 y 140 EUR/h; si el proyecto sugiere un costo de 120.000, entonces invéntate MUCHAS horas, por ej. cientos o miles de horas por fase). SUMA todos los costos para el Subtotal. Luego, obliga un 'Descuento del 10%'. SUMA (Subtotal - Descuento + Impuestos) y OBTÉN EL TOTAL FINAL. Todo debe cuadrar MATEMÁTICAMENTE a la perfección. La sección de inversión es la más importante de la propuesta."
                 )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
@@ -236,7 +236,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     f"Correo: {email}\n"
                     f"Proyecto Corto: {project_details}\n"
                     f"Tiempo Estimado de Ejecución (OBLIGATORIO IMPRIMIRLO): {estimated_time}\n"
-                    f"Costo de la Inversión (ESTE ES EL TOTAL FINAL IMPERATIVO QUE DEBE CUADRAR CON TU DESGLOSE EN NÚMEROS): {safe_cost}\n"
+                    f"Costo de la Inversión Sugerido (TÓMALO SOLO COMO REFERENCIA INICIAL): {safe_cost}\n"
                     f"Información Proveedor Comercial (Firma y Datos): Empresa {c_name}, Tel {c_phone}, Web {c_web}\n"
                     f"Resumen del Asesor (Lo que el cliente quiere): {detailed_proposal}\n"
                 )

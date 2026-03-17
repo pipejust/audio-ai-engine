@@ -179,6 +179,11 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 from langchain_openai import ChatOpenAI
                 from langchain_core.messages import SystemMessage, HumanMessage
                 import os
+                from datetime import datetime
+                import locale
+                try: locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+                except: pass
+                today_str = datetime.now().strftime("%d de %B de %Y")
                 
                 # Cargar el prompt gigante documentado por el usuario
                 template_path = os.path.join(os.path.dirname(__file__), "../cotizacion_prompt_template.txt")
@@ -186,13 +191,24 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     with open(template_path, "r", encoding="utf-8") as f:
                         system_prompt_text = f.read()
                 else:
-                    system_prompt_text = "Eres un redactor comercial experto. Escribe una propuesta detallada corporativa muy profesional de 16 secciones."
+                    system_prompt_text = "Eres un redactor comercial experto."
+                
+                strict_rules = (
+                    "REGLAS CRÍTICAS DE FORMATO Y CONTENIDO (OBLIGATORIAS):\n"
+                    "1. NO incluyas información bancaria ni números de cuenta de Xkape. Bórralos del formato.\n"
+                    "2. En el encabezado, usa los datos reales provistos. NUNCA escribas corchetes como '[Ciudad]' o '[Fecha]', usa los datos que te paso.\n"
+                    "3. Usa el 'Cliente' para el Nombre del Cliente y el Nombre del Contacto. Jamás uses el correo electrónico como nombre del cliente.\n"
+                    "4. Para campos del responsable comercial, cargo y teléfono de Xkape, déjalos completamente vacíos al final del documento.\n"
+                    "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento, sin saludar previamente ni usar la palabra 'Bloque 1'.\n"
+                    "6. OBLIGATORIO: El documento DEBE incluir claramente el Tiempo Estimado y la Inversión/Costo del Proyecto basándose en los datos provistos en este prompt.\n"
+                    "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Usa saltos de línea reales. Para viñetas o listas usa únicamente guiones (-). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia."
+                )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
                 
                 messages = [
-                    SystemMessage(content=system_prompt_text),
-                    HumanMessage(content=f"Genera exactamente ÚNICAMENTE el texto Bloque 1 (Cotización PDF) basado en estos datos:\nCliente: {name}\nCorreo: {email}\nProyecto Corto: {project_details}\nTiempo: {estimated_time}\nCosto: {safe_cost}\nResumen del Asesor (Voz): {detailed_proposal}")
+                    SystemMessage(content=system_prompt_text + "\n\n" + strict_rules),
+                    HumanMessage(content=f"Genera exactamente ÚNICAMENTE el texto de la Cotización PDF basándote en lo siguiente:\nCiudad: Andorra\nFecha: {today_str}\nNombre del Cliente: {name}\nNombre del Contacto: {name}\nCorreo: {email}\nProyecto Corto: {project_details}\nTiempo Estimado: {estimated_time}\nCosto de la Inversión: {safe_cost}\nResumen del Asesor (Lo que el cliente quiere): {detailed_proposal}")
                 ]
                 print("⏳ Llamando a GPT-4o para redactar la propuesta comercial formal (16 Puntos)...")
                 llm_response = llm.invoke(messages)
@@ -207,8 +223,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 pdf.set_text_color(*color_text)
                 pdf.set_font(family, "", size)
                 
-                # Cleanup chars that break FPDF's default latin-1, but KEEP the asterisks for markdown=True
-                safe_proposal = full_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("# ", "").replace("## ", "").replace("### ", "")
+                # Cleanup chars that break FPDF's default latin-1 and unwanted markdown artifacts
+                safe_proposal = full_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("# ", "").replace("## ", "").replace("### ", "").replace("```", "").replace("\n\n\n", "\n\n")
+                safe_proposal = safe_proposal.replace(r"\n", "\n") # Fix literal escaped newlines just in case
                 safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
                 
                 pdf.multi_cell(0, 6, safe_proposal, markdown=True)
@@ -225,8 +242,6 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 pdf.multi_cell(0, 10, f"- Requerimiento: {project_details}\\n- Tiempo Estimado: {estimated_time}\\n- Inversión Aproximada: {safe_cost}")
                 pdf.ln(10)
-            
-            pdf.multi_cell(0, 8, "Esta es una cotización automatizada generada por Inteligencia Artificial. Un agente humano se pondrá en contacto pronto para afinar detalles.")
             
             # Binary PDF output for Resend
             pdf_bytes_global = bytes(pdf.output())

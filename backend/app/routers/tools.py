@@ -168,7 +168,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             # Greet
             pdf.set_text_color(*color_text)
             pdf.set_font(family, "", size)
-            pdf.multi_cell(0, 8, f"Estimado/a {name},\\n\\nAdjuntamos la estimación para su requerimiento de software:")
+            pdf.multi_cell(0, 8, f"Estimado/a {name},\n\nAdjuntamos la estimación para su requerimiento de software:")
             pdf.ln(5)
             
             # FPDF's default Helvetica does not support the € symbol in latin-1. Replace it to avoid crashes.
@@ -219,7 +219,8 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento PDF (sin metadatos ni bloque 2 o 3).\n"
                     "6. OBLIGATORIO Y CRÍTICO: Debes incluir IMPERATIVAMENTE los valores exactos que te paso de 'Tiempo Estimado de Ejecución' y 'Costo de la Inversión'. NO pongas 'No especificado'. NO omitas los tiempos ni los precios. Es el corazón de la cotización.\n"
                     "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia.\n"
-                    f"8. Agrega textualmente el 'TEXTO OBLIGATORIO' sobre Gobernanza al final del documento. {legal_text}"
+                    f"8. Agrega textualmente el 'TEXTO OBLIGATORIO' sobre Gobernanza al final del documento. {legal_text}\n"
+                    "9. MÁXIMA PRIORIDAD - DESGLOSE DE COSTOS Y HORAS: Haz que la sección de costos sea la MÁS GRANDE y EXTREMADAMENTE DETALLADA de la cotización. Para llegar al 'Costo de la Inversión' final estipulado, DEBES desglosar CADA fase del proyecto (Planificación, Diseño UX/UI, Desarrollo Frontend, Desarrollo Backend, Pruebas y QA, Despliegue, etc.). Para cada fase es OBLIGATORIO inventar razonablemente la cantidad de horas ('son tantas horas') y multiplicarlo por una tarifa hora coherente (entre 55 EUR y 140 EUR la hora, acorde al mercado de Andorra/Europa), detallando la fórmula exacta: [XX horas * YY EUR/hr = ZZ EUR], de manera que la SUMA TOTAL OBLIGATORIAMENTE DEBE COINCIDIR EXACTAMENTE con el Costo Total de Inversión dictado en este prompt."
                 )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
@@ -234,7 +235,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     f"Correo: {email}\n"
                     f"Proyecto Corto: {project_details}\n"
                     f"Tiempo Estimado de Ejecución (OBLIGATORIO IMPRIMIRLO): {estimated_time}\n"
-                    f"Costo de la Inversión (OBLIGATORIO IMPRIMIRLO): {safe_cost}\n"
+                    f"Costo de la Inversión (OBLIGATORIO IMPRIMIRLO COMO TOTAL FINAL EXACTO): {safe_cost}\n"
                     f"Información Proveedor Comercial (Firma y Datos): Empresa {c_name}, NIT {c_id}, Tel {c_phone}, Web {c_web}\n"
                     f"Resumen del Asesor (Lo que el cliente quiere): {detailed_proposal}\n"
                 )

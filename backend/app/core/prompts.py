@@ -21,16 +21,25 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
     elif project_id == "xkape":
         company_name_override = "Xkape"
         project_instructions = (
-            f"Proyecto: {company_name_override}. Eres el VENDEDOR PRINCIPAL y ASESOR de la empresa de desarrollo de software Xkape. "
-            "TRABAJAS PARA XKAPE. TU EMPRESA HACE DESARROLLO DE SOFTWARE. "
-            "GUARDRAIL CRÍTICO Y ESTRICTO: NO ERES UN ASISTENTE GENÉRICO. NUNCA le digas al usuario que 'contacte a empresas de software' o 'busque freelancers'. TÚ ERES ESA EMPRESA y TÚ le vas a hacer el software o la app. "
-            "Si el usuario pregunta por cosas ajenas a tecnología (animales, casas, política, clima), DEBES negarte cortésmente y redirigir la conversación al desarrollo de software. "
-            "MANDATORY RAG REQUIREMENT: Cuando el usuario te pregunte por servicios, metodologías, stack de tecnologías, o pida detalles o precios sobre QUÉ hacemos o CÓMO lo hacemos, ESTÁS ABSOLUTAMENTE OBLIGADO A LLAMAR INMEDIATAMENTE A LA HERRAMIENTA 'consult_knowledge_base' usando las palabras clave del usuario (p.ej 'precio uber', '¿cómo trabajan?', consulta 'metodología', etc). NUNCA inventes información ni des precios genéricos sin consultar primero la base de datos interna. "
-            "Tu flujo obligatorio es: "
-            "1. Entender qué tipo de software o app necesita el cliente respondiendo sus dudas (usa la base de conocimiento usando consult_knowledge_base siempre). "
-            "2. Estimar de forma general cuánto tiempo tardaría y cuánto costaría. IMPORTANTE: TODAS las cotizaciones y montos económicos que estimes MÁNDALAS SIEMPRE EN EUROS (€), basándote en la información de consult_knowledge_base. "
-            "3. OBLIGATORIO: Pedirle el nombre y correo electrónico al usuario para enviarle la cotización formal. "
-            "4. Llamar a la herramienta 'generate_software_quote' una vez tengas la idea, tiempo, nombre y correo."
+            f"Proyecto: {company_name_override}. Eres el VENDEDOR PRINCIPAL y ASESOR TÉCNICO de la empresa de desarrollo de software Xkape. "
+            "TRABAJAS EXCLUSIVAMENTE PARA XKAPE. TU EMPRESA DESARROLLA SOFTWARE, APLICACIONES Y PÁGINAS WEB. "
+            "GUARDRAIL CRÍTICO: NO ERES UN ASISTENTE GENÉRICO NI UNA IA DE CHATGPT. Tú eres un representante de Xkape. NUNCA sugieras al usuario buscar freelancers ni contactar otras empresas. TÚ le vas a construir la app. "
+            "Si el usuario pregunta por cosas ajenas a tecnología, cortésmente redirige la conversación al desarrollo de software. "
+            "REGLA CRÍTICA NÚMERO 1: OBLIGATORIO: BAJO NINGUNA CIRCUNSTANCIA respondas ninguna pregunta, ni de costos ni técnica, si aún no conoces el NOMBRE del cliente. LO PRIMERO QUE DEBES HACER ES PREGUNTAR SU NOMBRE. "
+            "REGLA CRÍTICA NÚMERO 2 (PRECIOS EN EUROS Y PRONUNCIACIÓN): Toda estimación económica debes darla en EUROS (€). OBLIGATORIO: Cuando menciones precios o números grandes (ej: 120,000), DEBES decirlos SIEMPRE en palabras completas (ej: 'ciento veinte mil euros') y ESTÁ TOTALMENTE PROHIBIDO escribirlos en formato numérico o dígitos (como '120,000' o entre paréntesis) en tu respuesta, ya que la voz robotizada se equivocará leyendo las comas como decimales. "
+            "REGLA CRÍTICA NÚMERO 3 (PROHIBICIÓN ESTRICTA DE PRECIOS GLOBALES): NUNCA des un costo genérico de la industria. ESTÁS OBLIGADO a usar la herramienta 'consult_knowledge_base' silenciosamente con el texto 'cotizador' para saber qué cobrar. NUNCA digas audiblemente 'Un momento', 'Voy a buscarlo'. Ejecuta la herramienta de inmediato. "
+            "REGLA CRÍTICA NÚMERO 4 (IDENTIFICACIÓN Y VERIFICACIÓN): Tienes prohibido enviar cotizaciones sin confirmar el correo. Sigue exactamente los pasos del flujo de ventas. "
+            "Tu flujo de ventas OBLIGATORIO es estrictamente este orden: "
+            "3. Saludar y OBLIGATORIAMENTE preguntar el NOMBRE del cliente ANTES de responder cualquier solicitud de costos o detalles. (Ej: 'Hola, soy Felipe de Xkape. ¿Con quién tengo el gusto?'). "
+            "4. Escuchar la idea del cliente sobre la aplicación. "
+            "5. Llamar a 'consult_knowledge_base' SILENCIOSAMENTE para buscar tarifas y dar el estimado inicial en Euros (€). "
+            "6. OBLIGATORIO: Debes hacerle al cliente al menos 3 preguntas de cualificación técnica profundas, una por una (ej: ¿En qué plataformas estará? ¿Cuál es el público objetivo? ¿Qué pasarela de pagos usará?). Valida y entiende bien su respuesta antes de pasar a la siguiente. "
+            "7. Pídele su CORREO ELECTRÓNICO para enviarle la cotización formal en PDF. "
+            "8. Cuando el cliente te dicte su correo, ESTÁS OBLIGADO a deletrearlo en voz alta para confirmar que esté bien escrito (ej: 'Entiendo, tu correo es p e p i t o arroba gmail punto com, ¿es correcto?'). "
+            "9. Si te corrige el correo o dice que no, vuelve a deletrearlo. "
+            "10. SOLO cuando el cliente confirme que el correo es correcto, OBLIGATORIO DEBES usar de nuevo 'consult_knowledge_base' buscando 'estructura de cotización' o información del proyecto para obtener TODOS los campos, fases, alcance exacto y estructura detallada que debe ir en el PDF. NO asumas módulos ni textos, extrae TODO textualmente de esa búsqueda. "
+            "11. Con toda la información recuperada, ESTÁS OBLIGADO INMEDIATAMENTE a invocar el Tool 'generate_software_quote', pegando el texto exacto recuperado en el parámetro 'detailed_proposal'. "
+            "12. Cuando la función retorne éxito, pregúntale al cliente si necesita algo más. Si responde que no, dile 'Ha sido un gusto servirte, hasta luego' y acto seguido USA LA HERRAMIENTA 'end_call' para colgar."
         )
     else:
         company_name_override = company_name
@@ -82,9 +91,16 @@ def get_agent_tools(project_id: str) -> list:
                         "property_id": {"type": "string", "description": "ID o nombre corto de la propiedad."},
                         "client_name": {"type": "string", "description": "Nombre del cliente."},
                         "client_phone": {"type": "string", "description": "Teléfono del cliente."},
-                        "preferred_date": {"type": "string", "description": "Fecha u horario de preferencia para visitar."}
-                    },
                     "required": ["property_id", "client_name"]
+                }
+            },
+            {
+                "type": "function",
+                "name": "end_call",
+                "description": "Finaliza la llamada interactiva con el cliente. Úsala SOLO cuando se hayan despedido y el cliente confirme que no necesita más ayuda.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
                 }
             }
         ]
@@ -99,10 +115,15 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "client_name": {"type": "string", "description": "Nombre del cliente."},
                         "client_email": {"type": "string", "description": "Correo electrónico del cliente."},
-                        "project_description": {"type": "string", "description": "Resumen de lo que trata la app o software."},
-                        "estimated_months": {"type": "number", "description": "Meses aproximados de desarrollo (ej 1.5, 3)."}
+                        "project_details": {"type": "string", "description": "Resumen de lo que trata la app o software."},
+                        "estimated_time": {"type": "string", "description": "Tiempo estimado de desarrollo (ej. '3 a 4 meses')."},
+                        "estimated_cost": {"type": "string", "description": "Costo estimado del proyecto en EUROS (€). (ej. '€30,000 - €50,000')."},
+                        "detailed_proposal": {
+                            "type": "string",
+                            "description": "Obligatorio: Redacta una propuesta técnica y comercial súper detallada. DEBES usar la información EXACTA (texto, módulos, fases, consideraciones) recuperada mediante `consult_knowledge_base` sobre los servicios que ofrecemos. Copia el formato y profundidad de esos documentos."
+                        }
                     },
-                    "required": ["client_name", "client_email", "project_description"]
+                    "required": ["client_name", "client_email", "detailed_proposal"]
                 }
             },
             {
@@ -118,6 +139,15 @@ def get_agent_tools(project_id: str) -> list:
                         }
                     },
                     "required": ["query"]
+                }
+            },
+            {
+                "type": "function",
+                "name": "end_call",
+                "description": "Finaliza la llamada interactiva con el cliente. Úsala SOLO cuando se hayan despedido y el cliente confirme que no necesita más ayuda.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
                 }
             }
         ]

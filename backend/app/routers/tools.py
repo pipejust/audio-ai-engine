@@ -14,6 +14,8 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
     Endpoint dinámico para ejecutar herramientas.
     Este endpoint simula los Web Services externos para cada tenant.
     """
+    import smtplib
+    from email.message import EmailMessage
     # Obtenemos agent_manager desde request.app.state o importándolo, pero aquí usamos
     # el global de main.py mediante un getter simple o import deferido si es necesario.
     # Dado que es mejor inyectarlo o accederlo vía app.state:
@@ -89,6 +91,7 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
         project_details = args.get("project_details", "Desarrollo de Software a Medida")
         estimated_time = args.get("estimated_time", "No especificado")
         estimated_cost = args.get("estimated_cost", "No especificado")
+        detailed_proposal = args.get("detailed_proposal", None)
         
         if not email:
             return {"status": "error", "result_text": "Email is required to send the quote."}
@@ -121,6 +124,13 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
             family = style_config.get("fontFamily", "helvetica").lower()
             size = int(style_config.get("fontSize", 12))
             
+            # Get Company Data
+            c_name = style_config.get("companyName", "").encode('latin-1', 'ignore').decode('latin-1')
+            c_id = style_config.get("companyId", "").encode('latin-1', 'ignore').decode('latin-1')
+            c_address = style_config.get("companyAddress", "").encode('latin-1', 'ignore').decode('latin-1')
+            c_phone = style_config.get("companyPhone", "").encode('latin-1', 'ignore').decode('latin-1')
+            c_web = style_config.get("companyWebsite", "").encode('latin-1', 'ignore').decode('latin-1')
+            
             # 1. Generate PDF
             pdf = FPDF()
             pdf.add_page()
@@ -129,10 +139,29 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
             try: pdf.set_font(family, size=size)
             except: pdf.set_font("helvetica", size=size) # fallback
             
+            # --- COMPANY HEADER ---
+            if c_name or c_phone or c_web:
+                pdf.set_text_color(*color_heading)
+                pdf.set_font(family, "B", size + 6)
+                pdf.cell(0, 8, c_name if c_name else "Propuesta Comercial", new_x="LMARGIN", new_y="NEXT", align="R")
+                
+                pdf.set_text_color(*color_text)
+                pdf.set_font(family, "", size - 2)
+                if c_id: pdf.cell(0, 5, f"NIT/ID: {c_id}", new_x="LMARGIN", new_y="NEXT", align="R")
+                if c_address: pdf.cell(0, 5, c_address, new_x="LMARGIN", new_y="NEXT", align="R")
+                if c_phone: pdf.cell(0, 5, f"Tel: {c_phone}", new_x="LMARGIN", new_y="NEXT", align="R")
+                if c_web: pdf.cell(0, 5, c_web, new_x="LMARGIN", new_y="NEXT", align="R")
+                
+                pdf.ln(5)
+                pdf.set_draw_color(*color_heading)
+                pdf.set_line_width(0.5)
+                pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+                pdf.ln(10)
+            
             # Title
             pdf.set_text_color(*color_heading)
-            pdf.set_font(family, "B", size + 6)
-            pdf.cell(0, 10, "Cotización de Software", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.set_font(family, "B", size + 4)
+            pdf.cell(0, 10, "PROPUESTA DE DESARROLLO DE SOFTWARE", new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.ln(10)
             
             # Greet
@@ -141,16 +170,39 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
             pdf.multi_cell(0, 8, f"Estimado/a {name},\\n\\nAdjuntamos la estimación para su requerimiento de software:")
             pdf.ln(5)
             
-            # Details block with background
-            pdf.set_fill_color(*color_heading)
-            pdf.set_text_color(255, 255, 255)
-            pdf.set_font(family, "B", size)
-            pdf.cell(0, 10, "Detalles del Proyecto:", new_x="LMARGIN", new_y="NEXT", fill=True)
+            # FPDF's default Helvetica does not support the € symbol in latin-1. Replace it to avoid crashes.
+            safe_cost = estimated_cost.replace("€", "EUR")
             
-            pdf.set_text_color(*color_text)
-            pdf.set_font(family, "", size)
-            pdf.multi_cell(0, 10, f"- Requerimiento: {project_details}\\n- Tiempo Estimado: {estimated_time}\\n- Inversión Aproximada: {estimated_cost}")
-            pdf.ln(10)
+            if detailed_proposal:
+                pdf.set_fill_color(*color_heading)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font(family, "B", size)
+                pdf.cell(0, 10, "Propuesta Técnica y Comercial:", new_x="LMARGIN", new_y="NEXT", fill=True)
+                
+                pdf.set_text_color(*color_text)
+                pdf.set_font(family, "", size)
+                # Cleanup chars that break FPDF's default latin-1
+                safe_proposal = detailed_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-")
+                safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
+                pdf.multi_cell(0, 6, safe_proposal)
+                pdf.ln(5)
+                
+                pdf.set_fill_color(240, 240, 240)
+                pdf.set_font(family, "B", size)
+                pdf.multi_cell(0, 8, f"Resumen: {project_details}\\nTiempo Estimado: {estimated_time}\\nInversión Aproximada: {safe_cost}", fill=True)
+                pdf.ln(10)
+            else:
+                # Details block with background
+                pdf.set_fill_color(*color_heading)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font(family, "B", size)
+                pdf.cell(0, 10, "Detalles del Proyecto:", new_x="LMARGIN", new_y="NEXT", fill=True)
+                
+                pdf.set_text_color(*color_text)
+                pdf.set_font(family, "", size)
+                
+                pdf.multi_cell(0, 10, f"- Requerimiento: {project_details}\\n- Tiempo Estimado: {estimated_time}\\n- Inversión Aproximada: {safe_cost}")
+                pdf.ln(10)
             
             pdf.multi_cell(0, 8, "Esta es una cotización automatizada generada por Inteligencia Artificial. Un agente humano se pondrá en contacto pronto para afinar detalles.")
             
@@ -160,24 +212,35 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
             # 2. Setup standard SMTP
             if not smtp_obj or not smtp_obj.smtp_host or not smtp_obj.smtp_pass:
                 return {"status": "error", "result_text": "Dile al usuario: 'El sistema no tiene un servidor SMTP configurado para enviar correos. Pide a soporte que ingrese las claves.'"}
-                
-            import smtplib
-            from email.message import EmailMessage
             
             msg = EmailMessage()
             msg["Subject"] = "Tu Cotización de Software Comercial"
-            from_name = smtp_obj.from_name if smtp_obj.from_name else "Xkape Bot"
-            from_email = smtp_obj.from_email if smtp_obj.from_email else "soporte@xkape.bot"
+            from_name = getattr(smtp_obj, "from_name", None) or "Xkape Bot"
+            from_email = getattr(smtp_obj, "from_email", None) or "soporte@xkape.bot"
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = email
-            msg.set_content("Adjunto la cotización validada por nuestra Inteligencia Artificial.")
+            
+            bcc = getattr(smtp_obj, "bcc_email", None)
+            if bcc and bcc.strip():
+                msg["Bcc"] = bcc.strip()
+                
+            msg.set_content(f"Hola {name},\n\nAdjunto la cotización validada por nuestra Inteligencia Artificial.\nUno de nuestros asesores comerciales se contactará pronto.\n\n(Registro Interno: Cotización solicitada por {name})")
             msg.add_attachment(pdf_bytes_global, maintype='application', subtype='pdf', filename='Cotizacion.pdf')
             
             # 3. Send Email via standard SMTP (Supports Resend SMTP, Gmail, etc)
-            with smtplib.SMTP(smtp_obj.smtp_host, smtp_obj.smtp_port) as server:
-                server.starttls()
-                server.login(smtp_obj.smtp_user, smtp_obj.smtp_pass)
-                server.send_message(msg)
+            import socket
+            try:
+                if smtp_obj.smtp_port == 465:
+                    with smtplib.SMTP_SSL(smtp_obj.smtp_host, smtp_obj.smtp_port, timeout=15) as server:
+                        server.login(smtp_obj.smtp_user, smtp_obj.smtp_pass)
+                        server.send_message(msg)
+                else:
+                    with smtplib.SMTP(smtp_obj.smtp_host, smtp_obj.smtp_port, timeout=15) as server:
+                        server.starttls()
+                        server.login(smtp_obj.smtp_user, smtp_obj.smtp_pass)
+                        server.send_message(msg)
+            except socket.timeout:
+                return {"status": "error", "result_text": "Dile al usuario: 'El servidor de correos no responde (Timeout). Revisa la configuración del dashboard para asegurarte de que el host y el puerto (ej. 465 o 587) sean correctos.'"}
             
             return {"status": "success", "result_text": f"Dile al usuario que acabas de enviarle la cotización formal en PDF con los colores corporativos directamente a su correo {email}."}
             

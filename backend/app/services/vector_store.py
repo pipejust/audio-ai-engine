@@ -1,8 +1,6 @@
 import os
 try:
-    import chromadb
-    from chromadb.config import Settings
-    from langchain_community.vectorstores import Chroma
+    from langchain_community.vectorstores.pgvector import PGVector
     from langchain_community.embeddings import HuggingFaceEmbeddings
     HAS_ML = True
 except ImportError:
@@ -15,35 +13,32 @@ class VectorStoreManager:
             os.environ["HF_HOME"] = "/tmp/huggingface"
             os.environ["TRANSFORMERS_CACHE"] = "/tmp/huggingface"
         
-        if persist_directory is None:
-            if is_vercel:
-                self.persist_directory = "/tmp/.chroma_db"
-            else:
-                # Forzamos que la bd siempre se instancie dentro de la carpeta 'backend'
-                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                self.persist_directory = os.path.join(base_dir, ".chroma_db")
-        else:
-            self.persist_directory = persist_directory
-            
         if not HAS_ML:
             print("⚠️ Ejecutando sin dependencias ML (Vercel). VectorStore desactivado.")
             self.vectorstore = None
             return
 
-        # Uso de embeddings locales y gratuitos (rápidos para pruebas)
-        # BAAI/bge-small-en-v1.5 u 'all-MiniLM-L6-v2' son excelentes para RAG ligero.
         print("Cargando modelo de Embeddings (Local)...")
         self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
-        # Inicialización de Chroma
-        self.client = chromadb.PersistentClient(path=self.persist_directory)
+        db_url = os.getenv("DATABASE_URL")
+        if db_url and db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+            
         self.collection_name = "audio_rag_knowledge"
         
-        self.vectorstore = Chroma(
-            client=self.client,
-            collection_name=self.collection_name,
-            embedding_function=self.embeddings
-        )
+        try:
+            self.vectorstore = PGVector(
+                connection_string=db_url,
+                embedding_function=self.embeddings,
+                collection_name=self.collection_name,
+                use_jsonb=False, # Changed to False because Supabase fails with jsonb_path_match
+                engine_args={"pool_pre_ping": True, "pool_recycle": 3600}
+            )
+            print("✅ Conectado a PGVector en Supabase.")
+        except Exception as e:
+            print(f"❌ Error conectando a PGVector: {e}")
+            self.vectorstore = None
 
     def add_documents(self, chunks):
         """Agrega chunks de texto a la base de datos vectorial"""
@@ -51,7 +46,7 @@ class VectorStoreManager:
             print("⚠️ VectorStore desactivado, ignorando add_documents.")
             return
             
-        print(f"Ingestando {len(chunks)} chunks en ChromaDB...")
+        print(f"Ingestando {len(chunks)} chunks en PGVector...")
         self.vectorstore.add_documents(chunks)
         print("Ingesta completada.")
 
@@ -74,3 +69,4 @@ class VectorStoreManager:
         }
         # search_type="mmr" ensures we get diverse results instead of just the top closest ones
         return self.vectorstore.as_retriever(search_type="mmr", search_kwargs=search_kwargs)
+

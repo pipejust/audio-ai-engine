@@ -23,6 +23,7 @@ class SmtpSettings(Base):
     smtp_user = Column(String, nullable=False, default="resend")
     smtp_pass = Column(String, nullable=False)
     from_email = Column(String, nullable=False)
+    bcc_email = Column(String, nullable=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
 class Template(Base):
@@ -34,4 +35,12 @@ class Template(Base):
     
     # JSON String para guardar la familia tipográfica y los tres colores (textColor, headingColor, etc.)
     style_config = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+class VoiceSettings(Base):
+    __tablename__ = "voice_settings"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    project_id = Column(String, unique=True, index=True, nullable=False)
+    voice_id = Column(String, nullable=False, default="alloy")
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())

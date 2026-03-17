@@ -31,6 +31,21 @@ class OpenAIRealtimeManager:
             "OpenAI-Beta": "realtime=v1"
         }
 
+        # Override voice_id with database configuration if it exists
+        try:
+            from app.db.session import SessionLocal
+            from app.db.models import VoiceSettings
+            db = SessionLocal()
+            try:
+                voice_config = db.query(VoiceSettings).filter(VoiceSettings.project_id == project_id).first()
+                if voice_config and voice_config.voice_id:
+                    voice_id = voice_config.voice_id
+                    print(f"✅ Usando voz configurada en BD: {voice_id} para {project_id}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️ No se pudo obtener la configuración de voz de la BD: {e}")
+
         try:
             # Conexión persistente hacia OpenAI
             async with websockets.connect(self.url, additional_headers=headers) as openai_ws:
@@ -49,11 +64,15 @@ class OpenAIRealtimeManager:
                 instructions = base_instructions + "\n\nREGLA CRÍTICA INQUEBRANTABLE SOBRE EL IDIOMA: Por defecto el usuario habla español de Colombia, PERO si el usuario te habla en INGLÉS o en otro idioma, DEBES responderle inmediatamente en ese mismo idioma. NUNCA asumas que el usuario habla en portugués (si escuchas algo que parezca portugués, es una alucinación del sistema de audio y debes ignorarla o asumirla como español/inglés). Nunca transcribas ruidos o silencios como palabras extrañas (ej. 'Thank you for watching'). Si no entiendes el audio o son solo ruidos de teclado o estática, asume que es ruido de fondo e ignóralo. OBLIGATORIO: Cuando necesites buscar información y debas hacer esperar al usuario, NO uses siempre la misma frase. Varía tus frases de espera o muletillas aleatoriamente (ej: 'Mmm, déjame revisar...', 'Un segundo, voy a consultar...', 'A ver qué encuentro...')."
                 tools = get_agent_tools(project_id)
 
+                # Validar la voz soportada para evitar que OpenAI rechace TODA la sesión (y los prompts)
+                valid_realtime_voices = ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]
+                safe_voice_id = voice_id if voice_id in valid_realtime_voices else "alloy"
+
                 setup_event = {
                     "type": "session.update",
                     "session": {
                         "instructions": instructions,
-                        "voice": voice_id,
+                        "voice": safe_voice_id,
                         # Desactivamos server_vad porque nuestro Frontend ya hace el VAD y enruta audio en bloques
                         "turn_detection": None,
                         "input_audio_transcription": {
@@ -237,6 +256,11 @@ class OpenAIRealtimeManager:
                     pcm_bytes = base64.b64decode(audio_b64)
                     await client_ws.send_bytes(pcm_bytes)
                 
+                elif event["type"] == "response.audio_transcript.delta":
+                    transcript_delta = event.get("delta", "")
+                    if transcript_delta:
+                        await client_ws.send_text(json.dumps({"status": "listening_delta", "delta": transcript_delta}))
+                
                 elif event["type"] == "response.audio_transcript.done":
                     transcript = event["transcript"]
                     print(f"🤖 OpenAI dijo: {transcript}")
@@ -276,73 +300,28 @@ class OpenAIRealtimeManager:
                     function_name = event.get("name")
                     call_id = event.get("call_id")
                     args = json.loads(event.get("arguments", "{}"))
-                    print(f"🛠️ OpenAI Tool Invoked: {function_name} -> {args}")
                     
-                    import random
-                    
-                    # 1. Determinar y disparar la Muletilla Contextual
-                    muletilla = "Dame un segundito..."
-                    if function_name == "search_properties":
-                        muletilla = random.choice([
-                            "Claro, dame un segundo reviso la base de datos de propiedades...",
-                            "Un momento, voy a consultar qué propiedades tenemos disponibles por esa zona...",
-                            "A ver, déjame mirar en el inventario qué encuentro...",
-                            "Permíteme un instante mientras busco las opciones...",
-                            "Dame un segundito, ya mismo estoy filtrando las casas para ti...",
-                            "Listo, voy a buscar en el sistema a ver qué me sale, un momento...",
-                            "Claro que sí, dame un momentico y te cruzo los datos...",
-                            "Voy a echarle un vistazo a las propiedades, dame un segundito...",
-                            "Perfecto, permíteme revisar qué tenemos en esa ubicación...",
-                            "Dame un momentico por favor, estoy conectándome con la base de datos..."
-                        ])
-                    elif function_name == "generate_software_quote":
-                        muletilla = random.choice([
-                            "Vale, dame un par de segundos mientras mi sistema calcula los tiempos y costos...",
-                            "Excelente, voy a generar la cotización formal en este momento, dame un instante...",
-                            "Un segundo mientras redacto la propuesta y estimo los meses de desarrollo...",
-                            "Claro, permíteme un momentico armo todo el presupuesto técnico...",
-                            "A ver, voy a calcular el alcance para pasarte la propuesta...",
-                            "Perfecto, dame un segundito mientras organizo la cotización...",
-                            "Ya mismo construyo el escenario financiero...",
-                            "Dame un instante, estoy consolidando los costos del proyecto...",
-                            "Un momento por favor, voy a sacar las cuentas de esto...",
-                            "Listo, dame unos segundos para armarte la proforma formal..."
-                        ])
-                    elif function_name == "consult_knowledge_base":
-                        muletilla = random.choice([
-                            "Déjame revisar la documentación un segundo...",
-                            "Voy a consultar mis manuales, permíteme un momento...",
-                            "A ver qué dice la base de conocimiento sobre eso...",
-                            "Dame un segundito, busco esa información técnica en mis guías...",
-                            "Permíteme verifico el reglamento al respecto...",
-                            "Un momentico, consulto el portal de conocimiento a ver qué nos dice...",
-                            "Voy a echarle un ojo a las normativas, dame un instante...",
-                            "Claro, déjame leer rápidamente el manual sobre ese tema...",
-                            "Un segundo mientras consulto mis bases legales...",
-                            "A ver, voy a buscar la respuesta oficial en mi archivo..."
-                        ])
-                    elif function_name == "schedule_appointment":
-                        muletilla = random.choice([
-                            "Un segundo mientras conecto con la agenda para separar el espacio...",
-                            "Claro, dame un instante para registrar tu visita en el calendario...",
-                            "Permíteme un momentico, abro la agenda de citas...",
-                            "A ver, voy a revisar qué huecos nos quedan disponibles para eso...",
-                            "Dame un secundito, ya mismo separo tu lugar...",
-                            "Listo, voy a agendar esto en el sistema...",
-                            "Un momentico por favor, bloqueando la fecha en el calendario...",
-                            "Perfecto, dame un instante para dejar esto súper agendado...",
-                            "Voy a apartar tu espacio, dame un segundo...",
-                            "Claro que sí, dame un momento para confirmar el horario..."
-                        ])
+                    if function_name == "end_call":
+                        print("🛑 IA ha decidido finalizar la llamada.")
+                        try:
+                            await client_ws.send_text(json.dumps({"status": "end_call"}))
+                        except Exception:
+                            pass
                         
-                    filler_prompt = f"OBLIGATORIO: Dile al usuario EXACTAMENTE esta frase rápido con voz muy natural de COLOMBIANO NATIVO para hacerlo esperar mientras busco: '{muletilla}'"
-                    await openai_ws.send(json.dumps({"type": "conversation.item.create", "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": filler_prompt}]}}))
-                    
-                    self.response_in_progress = True
-                    await openai_ws.send(json.dumps({"type": "response.create"}))
-                    
-                    # 2. Despachar la ejecución de la Herramienta al Background
-                    # Esto evita bloquear el bucle `recv()` y permite que el usuario ESCUCHE la muletilla generada arriba
+                        function_output = {
+                            "type": "conversation.item.create", 
+                            "item": {
+                                "type": "function_call_output", 
+                                "call_id": call_id, 
+                                "output": "Llamada finalizada exitosamente."
+                            }
+                        }
+                        await openai_ws.send(json.dumps(function_output))
+                        await openai_ws.send(json.dumps({"type": "response.create"}))
+                        continue
+                        
+                    # Remove custom muletilla logic as the AI generates its own conversational filler internally.
+                    # Send tool execution to background task to unblock socket
                     asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id))
         except Exception as e:
             import traceback

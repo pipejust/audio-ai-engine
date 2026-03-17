@@ -83,7 +83,7 @@ class MultiFormatIngestor:
                 metadata["file_url"] = file_url
 
             if ext == 'txt':
-                text_content = file_content.decode('utf-8')
+                text_content = file_content.decode('utf-8', errors='replace').replace('\x00', '')
                 self._split_and_store(text_content, metadata)
                 del text_content
             elif ext == 'pdf':
@@ -93,7 +93,9 @@ class MultiFormatIngestor:
                 # Para evitar OOM en archivos grandes de cientos de páginas, dividimos el procesamiento
                 pages_batch = []
                 for i, page in enumerate(reader.pages):
-                    pages_batch.append(page.extract_text() + "\n")
+                    extracted = page.extract_text()
+                    if extracted:
+                        pages_batch.append(extracted.replace('\x00', '') + "\n")
                     
                     if len(pages_batch) >= 15 or i == len(reader.pages) - 1:
                         batch_text = "".join(pages_batch)
@@ -105,7 +107,7 @@ class MultiFormatIngestor:
             elif ext == 'csv':
                 import io
                 df = pd.read_csv(io.BytesIO(file_content))
-                text_content = df.to_string()
+                text_content = df.to_string().replace('\x00', '')
                 self._split_and_store(text_content, metadata)
                 del df
                 del text_content

@@ -21,6 +21,7 @@ class SmtpConfigRequest(BaseModel):
     smtp_user: str
     smtp_pass: str
     from_email: str
+    bcc_email: str | None = None
 
 class SmtpConfigResponse(BaseModel):
     project_id: str
@@ -28,6 +29,7 @@ class SmtpConfigResponse(BaseModel):
     smtp_port: int
     smtp_user: str
     from_email: str
+    bcc_email: str | None = None
     smtp_pass: str
     
     class Config:
@@ -45,6 +47,7 @@ def get_smtp_settings(project_id: str, db: Session = Depends(get_db)):
             smtp_port=465,
             smtp_user="resend",
             from_email="",
+            bcc_email="",
             smtp_pass=""
         )
     return settings
@@ -60,6 +63,7 @@ def save_smtp_settings(config: SmtpConfigRequest, db: Session = Depends(get_db))
         settings.smtp_user = config.smtp_user
         settings.smtp_pass = config.smtp_pass
         settings.from_email = config.from_email
+        settings.bcc_email = config.bcc_email
     else:
         settings = SmtpSettings(
             project_id=config.project_id,
@@ -67,7 +71,8 @@ def save_smtp_settings(config: SmtpConfigRequest, db: Session = Depends(get_db))
             smtp_port=config.smtp_port,
             smtp_user=config.smtp_user,
             smtp_pass=config.smtp_pass,
-            from_email=config.from_email
+            from_email=config.from_email,
+            bcc_email=config.bcc_email
         )
         db.add(settings)
         
@@ -131,3 +136,50 @@ def save_template_settings(config: TemplateConfigRequest, db: Session = Depends(
         raise HTTPException(status_code=500, detail=f"Error guardando plantilla: {e}")
         
     return {"status": "success", "message": "Plantilla visual actualizada correctamente."}
+
+class VoiceConfigRequest(BaseModel):
+    project_id: str
+    voice_id: str
+
+class VoiceConfigResponse(BaseModel):
+    project_id: str
+    voice_id: str
+    
+    class Config:
+        from_attributes = True
+
+@router.get("/voice", response_model=VoiceConfigResponse)
+def get_voice_settings(project_id: str, db: Session = Depends(get_db)):
+    """Obtiene la configuración de voz actual de un proyecto"""
+    from app.db.models import VoiceSettings
+    settings = db.query(VoiceSettings).filter(VoiceSettings.project_id == project_id).first()
+    if not settings:
+        return VoiceConfigResponse(
+            project_id=project_id,
+            voice_id="alloy"
+        )
+    return settings
+
+@router.post("/voice", response_model=dict)
+def save_voice_settings(config: VoiceConfigRequest, db: Session = Depends(get_db)):
+    """Crea o actualiza la configuración de voz de un proyecto"""
+    from app.db.models import VoiceSettings
+    settings = db.query(VoiceSettings).filter(VoiceSettings.project_id == config.project_id).first()
+    
+    if settings:
+        settings.voice_id = config.voice_id
+    else:
+        settings = VoiceSettings(
+            project_id=config.project_id,
+            voice_id=config.voice_id
+        )
+        db.add(settings)
+        
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error guardando voz: {e}")
+        
+    return {"status": "success", "message": "Voz de IA actualizada correctamente."}
+

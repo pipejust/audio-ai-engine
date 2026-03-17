@@ -199,7 +199,7 @@
     <!-- Login Screen -->
     <div id="login-container" class="flex flex-col items-center justify-center panel max-w-sm mx-auto mt-10 shadow-2xl">
         <h2 class="text-xl font-bold mb-6 text-white">Acceso a Busco Fácil</h2>
-        <input type="text" id="username" placeholder="Usuario (ej: admin_buscofacil)"
+        <input type="text" id="username" placeholder="Usuario (ej: admin_buscofacil)" value="admin_buscofacil"
             class="w-full mb-4 mt-2 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500">
         <div class="relative w-full mb-6">
             <input type="password" id="password" placeholder="Contraseña (ej: secreto123)"
@@ -272,6 +272,25 @@
         </div>
 
         <div class="panel flex flex-col w-full">
+            <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Configuración de Voz IA</h2>
+            <div class="mb-4">
+                <label class="text-sm font-semibold text-slate-400 block mb-2">Voz del Agente</label>
+                <select id="voice-id" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded outline-none focus:border-blue-500 appearance-auto cursor-pointer block">
+                    <option value="echo">Hombre (Echo)</option>
+                    <option value="verse">Hombre (Verse)</option>
+                    <option value="ballad">Hombre (Ballad)</option>
+                    <option value="shimmer">Mujer (Shimmer)</option>
+                    <option value="coral">Mujer (Coral)</option>
+                    <option value="sage">Mujer (Sage)</option>
+                    <option value="alloy">Neutral (Alloy)</option>
+                    <option value="ash">Neutral (Ash)</option>
+                </select>
+            </div>
+            <div id="voice-notif" class="notification"></div>
+            <button class="btn" onclick="saveVoiceConfig()">Guardar Configuración de Voz</button>
+        </div>
+
+        <div class="panel flex flex-col w-full">
             <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Configuración Envío de Correos (SMTP / Resend)</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
@@ -296,13 +315,73 @@
                         </svg>
                     </button>
                 </div>
-                <div class="md:col-span-2">
-                    <label class="text-sm font-semibold text-slate-400">Remitente (From Emal)</label>
+                <div class="md:col-span-1">
+                    <label class="text-sm font-semibold text-slate-400">Remitente (From Email)</label>
                     <input type="text" id="smtp-from" placeholder="ventas@tudominio.com">
+                </div>
+                <div class="md:col-span-1">
+                    <label class="text-sm font-semibold text-slate-400">Copia Oculta a Empresa (BCC)</label>
+                    <input type="text" id="smtp-bcc" placeholder="cotizaciones@buscofacil.com">
                 </div>
             </div>
             <div id="smtp-notif" class="notification"></div>
             <button class="btn" onclick="saveSmtpConfig()">Guardar Configuración SMTP</button>
+        </div>
+
+        <div class="panel flex flex-col w-full">
+            <h2 class="text-xl font-semibold mb-6 border-b border-slate-700 pb-2">Diseño de Cotización y Datos de la Empresa</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-slate-400">Nombre de la Empresa Comercial</label>
+                    <input type="text" id="tpl-company-name" placeholder="Ej: Busco Fácil Inmobiliaria" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">NIT / ID Empresa</label>
+                    <input type="text" id="tpl-company-id" placeholder="Ej: 901.234.567-8" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Dirección</label>
+                    <input type="text" id="tpl-company-address" placeholder="Ej: Calle 123 #45-67, Cali" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Teléfono</label>
+                    <input type="text" id="tpl-company-phone" placeholder="Ej: +57 300 000 0000" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Sitio Web</label>
+                    <input type="text" id="tpl-company-website" placeholder="Ej: www.buscofacil.com" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                
+                <h3 class="md:col-span-2 mt-4 text-lg font-semibold border-b border-slate-700 pb-2">Estilos Visuales de la Cotización</h3>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Fuente Principal</label>
+                    <select id="tpl-font" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                        <option value="helvetica">Helvetica</option>
+                        <option value="times">Times New Roman</option>
+                        <option value="courier">Courier</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Tamaño (pt)</label>
+                    <input type="number" id="tpl-size" value="12" class="w-full bg-[#0f172a] border border-slate-600 text-white p-3 rounded mt-[5px] mb-[15px] outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Color de Texto (Cuerpo)</label>
+                    <div class="flex items-center gap-2 mt-[5px] mb-[15px]">
+                        <input type="color" id="tpl-text-color" value="#333333" class="w-12 h-12 rounded cursor-pointer border-0 bg-transparent p-0">
+                        <span class="text-slate-300 text-sm" id="lbl-text-color">#333333</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-400">Color Primario (Títulos/Tabla)</label>
+                    <div class="flex items-center gap-2 mt-[5px] mb-[15px]">
+                        <input type="color" id="tpl-heading-color" value="#0055ff" class="w-12 h-12 rounded cursor-pointer border-0 bg-transparent p-0">
+                        <span class="text-slate-300 text-sm" id="lbl-heading-color">#0055ff</span>
+                    </div>
+                </div>
+            </div>
+            <div id="tpl-notif" class="notification"></div>
+            <button class="btn" onclick="saveTemplateConfig()">Guardar Plantilla Visual</button>
         </div>
 
         <!-- Sources Table -->
@@ -331,11 +410,6 @@
         const loginContainer = document.getElementById('login-container');
         const appContainer = document.getElementById('app-container');
         const logoutBtn = document.getElementById('logout-btn');
-        const orbBtn = document.getElementById('orb-btn');
-        const orb = document.getElementById('orb');
-        const statusText = document.getElementById('status-text');
-        const tBox = document.getElementById('t-box');
-        const tContent = document.getElementById('transcript-content');
 
         let currentToken = null;
         let currentProject = null;
@@ -346,278 +420,6 @@
         const API_BASE = isLocal ? 'http://localhost:8000' : RENDER_API;
         const WS_BASE = isLocal ? 'ws://localhost:8000' : RENDER_WS;
 
-        let ws;
-        let mediaRecorder;
-        let isConnected = false;
-        let audioChunks = [];
-        let stream;
-        let audioContext;
-        let currentAudio = null; // Para manejar la interrupción del audio
-        let activeAudioNodes = []; // Almacena fragmentos del WebAudio emitidos por IA
-        let pendingAudioDecodes = 0; // Previene que la UI parpadee por "status: listening" si hay blobs decodificando
-        let nextPlayTime = 0; // Temporizador global para encadenar fragmentos
-
-        function setOrbState(state) {
-            orb.className = 'orb'; // reset
-            if (state === 'listening') {
-                orb.classList.add('listening');
-                statusText.innerText = "Te escucho...";
-            } else if (state === 'thinking') {
-                orb.classList.add('thinking');
-                statusText.innerText = "Razonando...";
-            } else if (state === 'speaking') {
-                orb.classList.add('speaking');
-                statusText.innerText = "MoshWasi Hablando...";
-            } else if (state === 'waiting') {
-                statusText.innerText = "Procesando...";
-            } else {
-                statusText.innerText = "Conectado. Empieza a hablar.";
-            }
-        }
-
-        async function initAudio() {
-            try {
-                // Habilitamos Echo Cancellation para evitar que se escuche a sí misma
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    }
-                });
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                    }
-                };
-
-                mediaRecorder.onstop = () => {
-                    if (audioChunks.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        ws.send(audioBlob);
-                        console.log("Audio enviado para procesar.");
-                    }
-                    audioChunks = []; // Clean up
-                };
-
-                // Detector de Voz Nativo (Web Audio API) ya instanciado en el onClick principal
-                const mediaStreamSource = audioContext.createMediaStreamSource(stream);
-                const analyser = audioContext.createAnalyser();
-                analyser.minDecibels = -60; // Sensibilidad del micrófono
-                mediaStreamSource.connect(analyser);
-
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-                let silenceTimer = null;
-                let isSpeaking = false;
-                let sustainedLoudFrames = 0; // Para ignorar ruidos cortos
-
-                function detectSilence() {
-                    analyser.getByteFrequencyData(dataArray);
-
-                    let maxVolume = 0;
-                    for (let i = 0; i < dataArray.length; i++) {
-                        if (dataArray[i] > maxVolume) {
-                            maxVolume = dataArray[i];
-                        }
-                    }
-
-                    // Prevenir el Echo Loop dinámicamente, permitiendo "Barge-in" (Interrupción) si el usuario habla muy fuerte.
-                    const isAiSpeaking = activeAudioNodes && activeAudioNodes.length > 0;
-
-                    // Umbral normal (48), o Umbral de interrupción (100) si la IA está sonando.
-                    const threshold = isAiSpeaking ? 100 : 48;
-                    const requiredFrames = isAiSpeaking ? 30 : 12;
-
-                    if (maxVolume > threshold) {
-                        sustainedLoudFrames++;
-                        // Requiere ~350ms de ruido continuo (unos 20 frames a 60fps) para considerarlo habla.
-                        if (!isSpeaking && sustainedLoudFrames > requiredFrames) {
-                            console.log('🗣️ Hablando detectado (Sostenido, Vol: ' + maxVolume + ')');
-                            isSpeaking = true;
-
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                setOrbState('listening');
-
-                                // Si la IA estaba reproduciendo fragmentos PCM, los detenemos aquí inmediatamente en el Front
-                                if (activeAudioNodes && activeAudioNodes.length > 0) {
-                                    console.log("🛑 Deteniendo audio Front end por Barge-in (Habla de usuario)");
-                                    activeAudioNodes.forEach(node => {
-                                        try { node.stop(); node.disconnect(); } catch (e) { }
-                                    });
-                                    activeAudioNodes = [];
-                                    nextPlayTime = 0;
-                                }
-
-                                // Notificar a OpenAI / Backend de la interrupción temprana
-                                ws.send(JSON.stringify({ type: "interruption" }));
-
-                                if (mediaRecorder && mediaRecorder.state === 'inactive') {
-                                    mediaRecorder.start();
-                                }
-                            }
-                        }
-                        if (silenceTimer) {
-                            clearTimeout(silenceTimer);
-                            silenceTimer = null;
-                        }
-                    } else {
-                        // Resetea el contador si el ruido fue un pico corto o ruido estático
-                        if (sustainedLoudFrames > 0 && !isSpeaking) {
-                            sustainedLoudFrames--;
-                        }
-
-                        // Si está silenciado por 1.2 segundos (1200ms)
-                        if (isSpeaking && !silenceTimer) {
-                            silenceTimer = setTimeout(() => {
-                                console.log('🔇 Silencio detectado, enviando a procesar');
-                                isSpeaking = false;
-                                sustainedLoudFrames = 0;
-                                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                                    setOrbState('thinking');
-                                    mediaRecorder.stop();
-                                }
-                            }, 1200);
-                        }
-                    }
-
-                    if (isConnected && stream) {
-                        requestAnimationFrame(detectSilence);
-                    }
-                }
-
-                detectSilence(); // Iniciar monitor de audio continuo
-
-            } catch (err) {
-                console.error("Mic error:", err);
-                alert("Permite acceso al micrófono.");
-            }
-        }
-
-        orbBtn.onclick = async () => {
-            if (isConnected) {
-                // Desconectar
-                if (ws) ws.close();
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-                if (currentAudio) currentAudio.pause();
-                if (audioContext) audioContext.close();
-                if (stream) stream.getTracks().forEach(t => t.stop());
-                isConnected = false;
-                orb.className = 'orb';
-                statusText.innerText = "Desconectado. Toca para conectar.";
-                return;
-            }
-
-            // ws = new WebSocket('ws://localhost:8765/voice/stream');
-
-            // Requisito estricto de navegadores modernos: El AudioContext DEBE inicializarse o reanudarse
-            // como respuesta directa y síncrona a la interacción del usuario (el click).
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-
-            // Pasar el token firmado al backend al inicio para que resuelva qué project_id usar
-            const vid = document.getElementById('voice-id').value || 'echo';
-            ws = new WebSocket(`${WS_BASE}/voice/stream?token=${encodeURIComponent(currentToken)}&voice=${encodeURIComponent(vid)}`);
-
-            ws.onopen = async () => {
-                isConnected = true;
-                tBox.classList.remove('hidden');
-                setOrbState('connected');
-
-                // Pedimos permisos y activamos el detector de voz
-                if (!stream) await initAudio();
-            };
-
-            ws.onmessage = async (event) => {
-                if (event.data instanceof Blob) {
-                    setOrbState('speaking');
-                    pendingAudioDecodes++;
-
-                    try {
-                        const arrayBuffer = await event.data.arrayBuffer();
-                        // El navegador decodificará automáticamente MP3, WAV o cualquier formato soportado a máxima calidad sin ruido estático
-                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-                        // Reproducir usando programación de tiempo para que los fragmentos no se asolapen
-                        const source = audioContext.createBufferSource();
-                        source.buffer = audioBuffer;
-                        source.connect(audioContext.destination);
-
-                        // Si el tiempo proyectado se quedó atrás (porque hubo silencio o es un nuevo mensaje), reseteamos al tiempo actual + margen
-                        if (nextPlayTime < audioContext.currentTime) {
-                            nextPlayTime = audioContext.currentTime + 0.05; // 50ms delay
-                        }
-
-                        source.start(nextPlayTime);
-                        nextPlayTime += audioBuffer.duration;
-
-                        activeAudioNodes.push(source);
-
-                        source.onended = () => {
-                            const index = activeAudioNodes.indexOf(source);
-                            if (index > -1) activeAudioNodes.splice(index, 1);
-
-                            if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
-                                setOrbState('connected');
-                            }
-                        };
-                    } catch (e) {
-                        console.error("Error decodificando audio MP3: ", e);
-                    } finally {
-                        pendingAudioDecodes--;
-                        if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
-                            setOrbState('connected');
-                        }
-                    }
-                } else {
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.status === "reasoning") {
-                            setOrbState('thinking');
-
-                            // INTERRUPCIÓN REAL: Detenemos a la IA vaciando todos los nodos programados
-                            if (activeAudioNodes.length > 0) {
-                                console.log("🛑 IA Interrumpida por palabras del usuario");
-                                activeAudioNodes.forEach(node => {
-                                    try { node.stop(); node.disconnect(); } catch (e) { }
-                                });
-                                activeAudioNodes = [];
-                                nextPlayTime = 0; // Reiniciamos el temporizador
-                            }
-                        }
-
-                        if (data.transcription) {
-                            tContent.innerHTML += `<div class="text-user">Usuario: ${data.transcription}</div>`;
-                        }
-                        if (data.response) {
-                            tContent.innerHTML += `<div class="text-ai">IA: ${data.response}</div>`;
-                            tBox.scrollTop = tBox.scrollHeight;
-                        }
-
-                        if (data.status === "listening") {
-                            // Si el servidor terminó de hablar o falló el TTS, devuelve a estado de escucha
-                            if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
-                                setOrbState('connected');
-                            }
-                        }
-                    } catch (e) { }
-                }
-            };
-
-            ws.onclose = () => {
-                isConnected = false;
-                orb.className = 'orb';
-                statusText.innerText = "Desconectado.";
-                // NO cerraremos el stream ni el audioContext aquí para no romper la UI en micro-desconexiones.
-                // Se cerrarán adecuadamente si el usuario hace click manual en el botón.
-            }
-        };
 
         // UI INGESTION LOGIC
         function showNotification(id, message, isError = false) {
@@ -630,7 +432,7 @@
 
         async function uploadText() {
             const text = document.getElementById('text-input').value;
-            const pid = currentProject || 'default';
+            const pid = currentProject || 'buscofacil';
             if (!text) return showNotification('text-notif', 'El texto no puede estar vacío.', true);
 
             const formData = new FormData();
@@ -654,7 +456,7 @@
         async function uploadDocument() {
             const fileInput = document.getElementById('file-input');
             const file = fileInput.files[0];
-            const pid = currentProject || 'default';
+            const pid = currentProject || 'buscofacil';
             if (!file) return showNotification('file-notif', 'Selecciona un archivo.', true);
 
             const formData = new FormData();
@@ -679,7 +481,7 @@
         async function uploadSQLite() {
             const dbPath = document.getElementById('db-path').value;
             const query = document.getElementById('db-query').value;
-            const pid = currentProject || 'default';
+            const pid = currentProject || 'buscofacil';
             if (!dbPath) return showNotification('db-notif', 'Ruta de DB requerida.', true);
 
             const formData = new FormData();
@@ -727,6 +529,52 @@
             }
         }
 
+        async function loadVoiceConfig() {
+            const pid = currentProject || 'buscofacil';
+            try {
+                const res = await fetch(`${API_BASE}/settings/voice?project_id=${pid}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const voiceSelect = document.getElementById('voice-id');
+                    if (voiceSelect && data.voice_id) {
+                        voiceSelect.value = data.voice_id;
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading voice settings", e);
+            }
+        }
+
+        async function saveVoiceConfig() {
+            const pid = currentProject || 'buscofacil';
+            const vid = document.getElementById('voice-id').value || 'alloy';
+            const payload = {
+                project_id: pid,
+                voice_id: vid
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/settings/voice`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}` 
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showNotification('voice-notif', '✅ Configuración de Voz guardada correctamente.');
+                } else {
+                    throw new Error("Server error");
+                }
+            } catch (e) {
+                showNotification('voice-notif', '❌ Error guardando configuración de Voz.', true);
+            }
+        }
+
         async function loadSmtpConfig() {
             const pid = currentProject || 'buscofacil';
             try {
@@ -739,6 +587,7 @@
                     document.getElementById('smtp-port').value = data.smtp_port || 465;
                     document.getElementById('smtp-user').value = data.smtp_user || 'resend';
                     document.getElementById('smtp-from').value = data.from_email || '';
+                    document.getElementById('smtp-bcc').value = data.bcc_email || '';
                     document.getElementById('smtp-pass').value = data.smtp_pass || '';
                 }
             } catch (e) {
@@ -754,7 +603,8 @@
                 smtp_port: parseInt(document.getElementById('smtp-port').value) || 465,
                 smtp_user: document.getElementById('smtp-user').value,
                 smtp_pass: document.getElementById('smtp-pass').value,
-                from_email: document.getElementById('smtp-from').value
+                from_email: document.getElementById('smtp-from').value,
+                bcc_email: document.getElementById('smtp-bcc').value
             };
 
             try {
@@ -777,13 +627,92 @@
             }
         }
 
-        function updateUIForProject() {
-            // En la nueva arquitectura, BuscoFacil tiene su propia interfaz dura
-            // Sin embargo, si quisiéramos ocultar campos extra basados en el token, lo haríamos aquí.
-            const wasiSection = document.getElementById('wasi-section');
-            if (currentProject !== 'buscofacil' && wasiSection) {
-                wasiSection.style.display = 'none';
+        // --- VISUAL TEMPLATE BUILDER LOGIC ---
+        // Listeners for Color Indicators
+        document.getElementById('tpl-text-color').addEventListener('input', function(e) {
+            document.getElementById('lbl-text-color').textContent = e.target.value;
+        });
+        document.getElementById('tpl-heading-color').addEventListener('input', function(e) {
+            document.getElementById('lbl-heading-color').textContent = e.target.value;
+        });
+
+        async function loadTemplateConfig() {
+            const pid = currentProject || 'buscofacil';
+            try {
+                const res = await fetch(`${API_BASE}/settings/template?project_id=${pid}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.style_config && data.style_config !== "{}") {
+                        try {
+                            const config = JSON.parse(data.style_config);
+                            if (config.fontFamily) document.getElementById('tpl-font').value = config.fontFamily;
+                            if (config.fontSize) document.getElementById('tpl-size').value = config.fontSize;
+                            if (config.textColor) {
+                                document.getElementById('tpl-text-color').value = config.textColor;
+                                document.getElementById('lbl-text-color').textContent = config.textColor;
+                            }
+                            if (config.headingColor) {
+                                document.getElementById('tpl-heading-color').value = config.headingColor;
+                                document.getElementById('lbl-heading-color').textContent = config.headingColor;
+                            }
+                            if (config.companyName) document.getElementById('tpl-company-name').value = config.companyName;
+                            if (config.companyId) document.getElementById('tpl-company-id').value = config.companyId;
+                            if (config.companyAddress) document.getElementById('tpl-company-address').value = config.companyAddress;
+                            if (config.companyPhone) document.getElementById('tpl-company-phone').value = config.companyPhone;
+                            if (config.companyWebsite) document.getElementById('tpl-company-website').value = config.companyWebsite;
+                        } catch (e) { console.error("Error parsing Template JSON", e); }
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading Template Config", e);
             }
+        }
+
+        async function saveTemplateConfig() {
+            const font = document.getElementById('tpl-font').value;
+            const size = document.getElementById('tpl-size').value;
+            const textColor = document.getElementById('tpl-text-color').value;
+            const headingColor = document.getElementById('tpl-heading-color').value;
+            const pid = currentProject || 'buscofacil';
+
+            if (!font || !size) {
+                showNotification('tpl-notif', '⚠️ Completa la fuente y el tamaño.', true);
+                return;
+            }
+
+            const styleConfig = {
+                fontFamily: font,
+                fontSize: size,
+                textColor: textColor,
+                headingColor: headingColor,
+                companyName: document.getElementById('tpl-company-name').value,
+                companyId: document.getElementById('tpl-company-id').value,
+                companyAddress: document.getElementById('tpl-company-address').value,
+                companyPhone: document.getElementById('tpl-company-phone').value,
+                companyWebsite: document.getElementById('tpl-company-website').value
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/settings/template`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({ project_id: pid, style_config: JSON.stringify(styleConfig) })
+                });
+
+                if (res.ok) showNotification('tpl-notif', '✅ Plantilla Visual guardada correctamente.');
+                else throw new Error("Server error");
+            } catch (e) {
+                showNotification('tpl-notif', '❌ Error guardando plantilla.', true);
+            }
+        }
+
+        function updateUIForProject() {
+            // Document-specific logic
         }
 
         async function doLogin() {
@@ -805,8 +734,17 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('project_id', data.project_id);
+                    
+                    if (data.project_id !== 'buscofacil') {
+                        document.getElementById('login-error').innerText = "Usuario no pertenece a este proyecto (Busco Fácil).";
+                        document.getElementById('login-error').classList.remove('hidden');
+                        btn.innerText = "Iniciar Sesión";
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    localStorage.setItem('buscofacil_access_token', data.access_token);
+                    localStorage.setItem('buscofacil_project_id', data.project_id);
                     currentToken = data.access_token;
                     currentProject = data.project_id;
 
@@ -826,11 +764,10 @@
         }
 
         function logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('project_id');
+            localStorage.removeItem('buscofacil_access_token');
+            localStorage.removeItem('buscofacil_project_id');
             currentToken = null;
             currentProject = null;
-            if (ws) ws.close();
             checkAuth();
         }
 
@@ -855,6 +792,7 @@
                             <span class="bg-blue-900/50 text-blue-400 px-2 py-1 rounded text-xs">${s.source_type}</span>
                             ${s.status === 'processing' ? '<span class="bg-yellow-900/50 text-yellow-400 px-2 py-1 rounded text-xs ml-2 animate-pulse">Procesando...</span>' : ''}
                             ${s.status === 'error' ? '<span class="bg-red-900/50 text-red-400 px-2 py-1 rounded text-xs ml-2">Error</span>' : ''}
+                            ${s.status === 'indexed' ? '<span class="bg-green-900/50 text-green-400 px-2 py-1 rounded text-xs ml-2">Indexado</span>' : ''}
                         </td>
                         <td class="p-3 truncate max-w-xs" title="${s.source_name}">${s.source_name}</td>
                         <td class="p-3 text-slate-400 text-xs">${new Date(s.timestamp).toLocaleDateString()}</td>
@@ -867,6 +805,10 @@
                         </td>
                     </tr>
                 `).join('');
+                
+                if (sources.some(s => s.status === 'processing')) {
+                    setTimeout(loadSources, 5000);
+                }
             } catch (e) {
                 listEl.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">Error al cargar fuentes.</td></tr>';
             }
@@ -890,8 +832,8 @@
         }
 
         function checkAuth() {
-            currentToken = localStorage.getItem('access_token');
-            currentProject = localStorage.getItem('project_id');
+            currentToken = localStorage.getItem('buscofacil_access_token');
+            currentProject = localStorage.getItem('buscofacil_project_id');
             // Validamos que no sean strings inválidas por un error previo
             if (currentToken && currentToken !== 'undefined' && currentToken !== 'null') {
                 loginContainer.classList.add('hidden');
@@ -900,12 +842,14 @@
                 updateUIForProject();
                 loadSources();
                 loadSmtpConfig();
+                loadVoiceConfig();
+                loadTemplateConfig();
             } else {
                 loginContainer.classList.remove('hidden');
                 appContainer.classList.add('hidden');
                 logoutBtn.classList.add('hidden');
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('project_id');
+                localStorage.removeItem('buscofacil_access_token');
+                localStorage.removeItem('buscofacil_project_id');
             }
         }
 

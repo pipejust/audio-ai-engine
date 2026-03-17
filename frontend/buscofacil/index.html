@@ -199,7 +199,8 @@
         <div class="flex flex-col items-center justify-center panel min-h-[500px]">
 
             <h2 class="text-xl font-semibold mb-2">Conexión de Voz</h2>
-            <p class="text-slate-400 mb-8" id="status-text">Toca la esfera para conectar</p>
+            <p class="text-slate-400 mb-4" id="status-text">Toca la esfera para conectar</p>
+
 
             <div class="orb-container mb-8" id="orb-btn">
                 <div class="orb" id="orb">
@@ -474,6 +475,15 @@
                 } else {
                     try {
                         const data = JSON.parse(event.data);
+                        if (data.status === "end_call") {
+                            console.log("🛑 IA solicitó finalizar la llamada.");
+                            showNotification('status-text', 'Llamada finalizada por el asistente.');
+                            if (isConnected && orbBtn) {
+                                orbBtn.click();
+                            }
+                            return;
+                        }
+
                         if (data.status === "reasoning") {
                             setOrbState('thinking');
 
@@ -490,9 +500,32 @@
 
                         if (data.transcription) {
                             tContent.innerHTML += `<div class="text-user">Usuario: ${data.transcription}</div>`;
+                            tBox.scrollTop = tBox.scrollHeight;
                         }
+                        
+                        if (data.status === "listening_delta" && data.delta) {
+                            // Find the last AI message, if it doesn't exist or we just started a new response, create one
+                            let lastMsg = tContent.lastElementChild;
+                            if (!lastMsg || !lastMsg.classList.contains('text-ai') || lastMsg.getAttribute('data-finished') === 'true') {
+                                lastMsg = document.createElement('div');
+                                lastMsg.className = 'text-ai';
+                                lastMsg.innerHTML = 'IA: ';
+                                tContent.appendChild(lastMsg);
+                            }
+                            // Append the delta
+                            lastMsg.innerHTML += data.delta;
+                            tBox.scrollTop = tBox.scrollHeight;
+                        }
+                        
                         if (data.response) {
-                            tContent.innerHTML += `<div class="text-ai">IA: ${data.response}</div>`;
+                            // Ensure the final block is marked as finished if we were streaming
+                            let lastMsg = tContent.lastElementChild;
+                            if (lastMsg && lastMsg.classList.contains('text-ai') && !lastMsg.getAttribute('data-finished')) {
+                                lastMsg.setAttribute('data-finished', 'true');
+                            } else {
+                                // Fallback just in case delta streaming wasn't used for this message
+                                tContent.innerHTML += `<div class="text-ai" data-finished="true">IA: ${data.response}</div>`;
+                            }
                             tBox.scrollTop = tBox.scrollHeight;
                         }
 

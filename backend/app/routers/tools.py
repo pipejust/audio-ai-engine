@@ -349,7 +349,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     else:
                         # Standard Markdown processing for normal lines (handles bold in the middle)
                         try:
-                            pdf.multi_cell(0, 6, stripped, markdown=True)
+                            pdf.multi_cell(0, 6, stripped)
                         except Exception as e:
                             print(f"FPDF Error in markdown line: {stripped} -> {e}")
                 

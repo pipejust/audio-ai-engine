@@ -89,6 +89,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
     elif function_name == "generate_software_quote":
         name = args.get("client_name", "Cliente")
         email = args.get("client_email")
+        country = args.get("client_country", "País no especificado")
         project_details = args.get("project_details", "Desarrollo de Software a Medida")
         estimated_time = args.get("estimated_time", "No especificado")
         estimated_cost = args.get("estimated_cost", "No especificado")
@@ -165,11 +166,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             pdf.cell(0, 10, "PROPUESTA DE DESARROLLO DE SOFTWARE", new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.ln(10)
             
-            # Greet
-            pdf.set_text_color(*color_text)
-            pdf.set_font(family, "", size)
-            pdf.multi_cell(0, 8, f"Estimado/a {name},\n\nAdjuntamos la estimación para su requerimiento de software:")
-            pdf.ln(5)
+            # (El saludo "Estimado" se elimina ya que el usuario pidió quitarlo y usar el LLM para iniciar sin saludo)
             
             # FPDF's default Helvetica does not support the € symbol in latin-1. Replace it to avoid crashes.
             safe_cost = estimated_cost.replace("€", "EUR")
@@ -221,14 +218,15 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia.\n"
                     f"8. Agrega textualmente el 'TEXTO OBLIGATORIO' sobre Gobernanza al final del documento. {legal_text}\n"
                     "9. MÁXIMA PRIORIDAD - HORAS EN ALCANCE: En la sección '3. Alcance del Proyecto', describe las fases y PON ÚNICAMENTE LAS HORAS estimadas para cada fase (ej. 'Fase 1: Planificación - 40 horas'). ESTÁ ESTRICTAMENTE PROHIBIDO PONER PRECIOS, TARIFAS O SÍMBOLOS DE DINERO (EUR, $, etc.) EN LA SECCIÓN DE ALCANCE.\n"
-                    "10. REGLA MATEMÁTICA EN INVERSIÓN: Debes crear la sección '9. Inversión o Costo del Proyecto'. AQUÍ ES DONDE VAN LOS PRECIOS. Detalla obligatoriamente el costo copiando la estructura: '[Nombre Fase] - [XX] horas a [YY] EUR/hora = [ZZ] EUR'. (Usa tarifas realistas de software grande entre 55 y 140 EUR/h; si el proyecto sugiere un costo de 120.000, entonces invéntate MUCHAS horas, por ej. cientos o miles de horas por fase). SUMA todos los costos para el Subtotal. Luego, obliga un 'Descuento del 10%'. SUMA (Subtotal - Descuento + Impuestos) y OBTÉN EL TOTAL FINAL. Todo debe cuadrar MATEMÁTICAMENTE a la perfección. La sección de inversión es la más importante de la propuesta."
+                    "10. REGLA MATEMÁTICA EN INVERSIÓN: Debes crear la sección '9. Inversión o Costo del Proyecto'. AQUÍ ES DONDE VAN LOS PRECIOS. Detalla obligatoriamente el costo copiando la estructura: '[Nombre Fase] - [XX] horas a [YY] EUR/hora = [ZZ] EUR'. (Usa tarifas realistas de software grande entre 55 y 140 EUR/h; si el proyecto sugiere un costo de 120.000, entonces invéntate MUCHAS horas, por ej. cientos o miles de horas por fase). SUMA todos los costos para el Subtotal. Luego, obliga un 'Descuento del 10%'. SUMA (Subtotal - Descuento + Impuestos) y OBTÉN EL TOTAL FINAL. Todo debe cuadrar MATEMÁTICAMENTE a la perfección. La sección de inversión es la más importante de la propuesta.\n"
+                    "11. SIN SALUDOS E IMPUESTOS: Inicia directamente con 'Ciudad: [La Capital del país provisto]' seguido OBLIGATORIAMENTE DE DOS SALTOS DE LÍNEA, luego 'Fecha:'. Cero saludos como 'Estimado'. En tu cuenta final, investiga y APLICA EL IMPUESTO LOCAL DEL PAÍS PROVISTO obligatoriamente."
                 )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
                 
                 human_prompt = (
                     f"Genera exactamente ÚNICAMENTE el texto de la Cotización PDF basándote en lo siguiente:\n"
-                    f"Ciudad: Andorra\n"
+                    f"País del Proyecto: {country}\n"
                     f"Fecha: {today_str}\n"
                     f"Código de Cotización: {quote_code}\n"
                     f"Nombre del Cliente: {name}\n"
@@ -252,18 +250,53 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 pdf.set_fill_color(*color_heading)
                 pdf.set_text_color(255, 255, 255)
-                pdf.set_font(family, "B", size)
-                pdf.cell(0, 10, "Propuesta Técnica y Comercial:", new_x="LMARGIN", new_y="NEXT", fill=True)
+                pdf.set_font(family, "B", size + 2)
+                pdf.ln(5)
+                pdf.cell(0, 12, "Propuesta Técnica y Comercial", new_x="LMARGIN", new_y="NEXT", fill=True, align="C")
+                pdf.ln(10)
                 
                 pdf.set_text_color(*color_text)
                 pdf.set_font(family, "", size)
                 
                 # Cleanup chars that break FPDF's default latin-1 and unwanted markdown artifacts
-                safe_proposal = full_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("# ", "").replace("## ", "").replace("### ", "").replace("```", "").replace("\n\n\n", "\n\n")
+                safe_proposal = full_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("```", "")
                 safe_proposal = safe_proposal.replace(r"\n", "\n") # Fix literal escaped newlines just in case
                 safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
                 
-                pdf.multi_cell(0, 6, safe_proposal, markdown=True)
+                # Custom line-by-line renderer to color Markdown titles #36AA32 and strip numerals
+                import re
+                lines = safe_proposal.split('\n')
+                for line in lines:
+                    stripped = line.strip()
+                    if not stripped:
+                        pdf.ln(5)
+                        continue
+                    
+                    if stripped.startswith("##") or stripped.startswith("# "):
+                        # Regex to remove leading markdown hashes and numerals (ej. '## 1.', '### 2.2 ')
+                        title_text = re.sub(r'^#+\s*(\d+\.?\s*)?', '', stripped).strip()
+                        pdf.ln(4)
+                        pdf.set_text_color(*color_heading) # Corporate Green #36AA32
+                        pdf.set_font(family, "B", size + 1)
+                        pdf.multi_cell(0, 8, title_text)
+                        
+                        pdf.set_text_color(*color_text)
+                        pdf.set_font(family, "", size)
+                    elif stripped.startswith("**") and stripped.endswith("**"):
+                        # Basic bold for full bold lines
+                        pdf.set_font(family, "B", size)
+                        try:
+                            pdf.multi_cell(0, 6, stripped.replace("**", ""))
+                        except Exception as e:
+                            print(f"FPDF Error in bold line: {stripped} -> {e}")
+                        pdf.set_font(family, "", size)
+                    else:
+                        # Standard Markdown processing for normal lines (handles bold in the middle)
+                        try:
+                            pdf.multi_cell(0, 6, stripped, markdown=True)
+                        except Exception as e:
+                            print(f"FPDF Error in markdown line: {stripped} -> {e}")
+                
                 pdf.ln(5)
             else:
                 # Details block with background

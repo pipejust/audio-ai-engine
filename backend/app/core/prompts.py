@@ -35,11 +35,11 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "2. Escuchar la idea del cliente sobre la aplicación. "
             "3. Llamar a 'consult_knowledge_base' SILENCIOSAMENTE para buscar tarifas (modelo matemático) y dar el estimado inicial en palabras (Euros). "
             "4. OBLIGATORIO: Debes hacerle al cliente al menos 3 preguntas de cualificación técnica profundas, una por una (ej: ¿En qué plataformas estará? ¿Cuál es el público objetivo? ¿Qué pasarela de pagos usará?). Valida y entiende bien su respuesta antes de pasar a la siguiente. "
-            "5. Pídele su CORREO ELECTRÓNICO para enviarle la cotización formal en PDF. "
+            "5. Pídele su CORREO ELECTRÓNICO y su PAÍS DE RESIDENCIA para enviarle la cotización formal en PDF y calcular correctamente los impuestos locales aplicables. "
             "6. Cuando el cliente te dicte su correo, ESTÁS OBLIGADO a deletrearlo en voz alta para confirmar que esté bien escrito (ej: 'Entiendo, tu correo es p e p i t o arroba gmail punto com, ¿es correcto?'). "
             "7. Si te corrige el correo o dice que no, ACTUALIZA TU MEMORIA con la corrección y vuelve a deletrearlo hasta que lo confirme. "
             "8. SOLO cuando el cliente confirme explícitamente que SÍ es correcto, o te pida que lo envíes ya, OBLIGATORIO DEBES decirle en voz alta: '¡Perfecto! Dame unos segundos mientras genero la propuesta comercial completa.' y luego, OBLIGATORIO INMEDIATAMENTE invocar el Tool 'generate_software_quote'. NUNCA invoques la herramienta sin antes decirle al cliente que espere. "
-            "9. En los parámetros del Tool, pasa el correo REAL del cliente y en 'detailed_proposal' escribe un ÚNICO PÁRRAFO RESUMIDO describiendo la idea del cliente. NO trates de escribir la cotización completa tú mismo. "
+            "9. En los parámetros del Tool, pasa el correo REAL del cliente, el país dictado, y en 'detailed_proposal' escribe un ÚNICO PÁRRAFO RESUMIDO describiendo la idea. "
             "10. Cuando la función retorne éxito, pregúntale al cliente si necesita algo más. Si responde que no, dile 'Ha sido un gusto servirte, hasta luego' y acto seguido USA LA HERRAMIENTA 'end_call' para colgar."
         )
     else:
@@ -118,6 +118,7 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "client_name": {"type": "string", "description": "Nombre del cliente."},
                         "client_email": {"type": "string", "description": "Correo electrónico del cliente."},
+                        "client_country": {"type": "string", "description": "País de residencia del cliente para calcular impuestos."},
                         "project_details": {"type": "string", "description": "Resumen de lo que trata la app o software."},
                         "estimated_time": {"type": "string", "description": "Tiempo estimado de desarrollo (ej. '3 a 4 meses')."},
                         "estimated_cost": {"type": "string", "description": "Costo estimado del proyecto en EUROS (€). (ej. '€30,000 - €50,000')."},
@@ -126,7 +127,7 @@ def get_agent_tools(project_id: str) -> list:
                             "description": "Obligatorio: Escribe un resumen de máximo 1 párrafo explicando detalladamente qué quiere lograr el cliente (Ej. App tipo Uber con pagos en efectivo para iOS y Android). El sistema Backend se encargará de redactar la propuesta comercial basándose en este resumen."
                         }
                     },
-                    "required": ["client_name", "client_email", "detailed_proposal"]
+                    "required": ["client_name", "client_email", "client_country", "detailed_proposal"]
                 }
             },
             {

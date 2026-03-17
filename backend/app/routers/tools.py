@@ -193,7 +193,6 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     system_prompt_text = "Eres un redactor comercial experto."
                 
                 legal_text = (
-                    "\n\n--- INICIO TEXTO OBLIGATORIO AL FINAL DE LA COTIZACIÓN (Sección 17) ---\n"
                     "Gobernanza: legal, seguridad, privacidad, validación y roadmap\n"
                     "Consideraciones legales, de seguridad y privacidad al usar cotizaciones reales\n"
                     "1) Datos personales y anonimización\n"
@@ -204,22 +203,59 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     "Para controles, puede alinearse con un catálogo de controles de seguridad y privacidad como NIST SP 800-53 (catálogo amplio de controles), y aplicar endurecimiento de acceso, cifrado, logging y segregación de entornos. Para seguridad aplicada al software que se cotiza, OWASP ASVS da una base verificable para requisitos y pruebas de controles técnicos en aplicaciones.\n"
                     "4) Riesgo de IA y gobernanza\n"
                     "El NIST AI RMF está planteado como recurso voluntario para gestionar riesgos de IA y promover confiabilidad, y puede servir como marco de control del ciclo de vida (diseño, despliegue, evaluación).\n"
-                    "--- FIN TEXTO OBLIGATORIO ---\n"
                 )
 
                 strict_rules = (
-                    "REGLAS CRÍTICAS DE FORMATO Y CONTENIDO (OBLIGATORIAS):\n"
-                    "1. NO inventes información bancaria. Como no tienes los datos del banco, elimina completamente los campos 'Banco', 'Tipo de Cuenta', 'Número de Cuenta', 'Titular' y 'Correo de Confirmación de Pago'. ¡NO los imprimas con corchetes!\n"
-                    "2. En el encabezado, usa exactamente los datos provistos. NUNCA escribas corchetes como '[Ciudad]', usa los datos que te paso.\n"
-                    "3. Usa el nombre provisto para el Cliente y Contacto.\n"
-                    "4. En la Firma y Datos de Proveedor, usa EXCLUSIVAMENTE la Información Proveedor que te paso. Si 'Cargo' no existe, bórralo.\n"
-                    "5. Genera DIRECTAMENTE y ÚNICAMENTE el contenido del documento PDF (sin metadatos). NO generes un título principal al inicio como '# Cotización Comercial'. Empieza la redacción de frente.\n"
-                    "6. OBLIGATORIO Y CRÍTICO: Debes incluir IMPERATIVAMENTE los valores exactos que te paso de 'Tiempo Estimado de Ejecución' y 'Costo de la Inversión'. NO pongas 'No especificado'. NO omitas los tiempos ni los precios. Es el corazón de la cotización.\n"
-                    "7. NO uses caracteres extraños ni saltos de línea escapados (\\n). Para negritas usa asteriscos dobles (**texto**). NO uses los corchetes [] bajo ninguna circunstancia.\n"
-                    f"8. Agrega textualmente el 'TEXTO OBLIGATORIO' sobre Gobernanza al final del documento. {legal_text}\n"
-                    "9. MÁXIMA PRIORIDAD - HORAS EN ALCANCE: En la sección '3. Alcance del Proyecto', describe las fases y PON ÚNICAMENTE LAS HORAS estimadas para cada fase (ej. 'Fase 1: Planificación - 40 horas'). ESTÁ ESTRICTAMENTE PROHIBIDO PONER PRECIOS, TARIFAS O SÍMBOLOS DE DINERO (EUR, $, etc.) EN LA SECCIÓN DE ALCANCE.\n"
-                    "10. REGLA MATEMÁTICA EN INVERSIÓN: Debes crear la sección '9. Inversión o Costo del Proyecto'. AQUÍ ES DONDE VAN LOS PRECIOS. Detalla obligatoriamente el costo copiando la estructura: '[Nombre Fase] - [XX] horas a [YY] EUR/hora = [ZZ] EUR'. (Usa tarifas realistas de software grande entre 55 y 140 EUR/h; si el proyecto sugiere un costo de 120.000, entonces invéntate MUCHAS horas, por ej. cientos o miles de horas por fase). SUMA todos los costos para el Subtotal. Luego, obliga un 'Descuento del 10%'. SUMA (Subtotal - Descuento + Impuestos) y OBTÉN EL TOTAL FINAL. Todo debe cuadrar MATEMÁTICAMENTE a la perfección. La sección de inversión es la más importante de la propuesta.\n"
-                    "11. SIN SALUDOS E IMPUESTOS: Inicia directamente con 'Ciudad: [La Capital del país provisto]' seguido OBLIGATORIAMENTE DE DOS SALTOS DE LÍNEA, luego 'Fecha:'. Cero saludos como 'Estimado'. En tu cuenta final, investiga y APLICA EL IMPUESTO LOCAL DEL PAÍS PROVISTO obligatoriamente."
+                    "ERES UN REDACTOR EXPERTO Y DEBES SEGUIR OBLIGATORIAMENTE ESTA PLANTILLA EXACTA AL PIE DE LA LETRA.\n"
+                    "NO INVENTES SECCIONES. NO ELIMINES SECCIONES. USA LOS TÍTULOS EXACTAMENTE COMO ESTÁN AQUÍ SIN NÚMEROS Y SIN '#' ANTES DEL TÍTULO.\n"
+                    "NUNCA uses subtítulos con números (ej. NO '1. Introducción', SÓLO 'Introducción').\n"
+                    "NUNCA uses saludos iniciales como 'Estimado'. Empieza directamente con 'Ciudad:'.\n\n"
+                    "PLANTILLA OBLIGATORIA:\n"
+                    "Ciudad: [Inserta Capital del país provisto]\n"
+                    "Fecha: [Inserta la fecha provista]\n"
+                    "Código de Cotización: [Inserta código provisto]\n"
+                    "Cliente: [Inserta el Cliente provisto]\n"
+                    "Contacto: [Inserta el Contacto provisto]\n"
+                    "Proyecto: [Título Corto del Proyecto]\n"
+                    "Asunto: Propuesta comercial para [Tema]\n"
+                    "---\n"
+                    "Introducción\n"
+                    "[Escribe 1 párrafo introductorio]\n\n"
+                    "Descripción del Proyecto\n"
+                    "[Escribe 1 párrafo de la descripción]\n\n"
+                    "Alcance del Proyecto\n"
+                    "El proyecto se dividirá en las siguientes fases:\n"
+                    "- Fase 1: [Nombre de la Fase] - [XX] horas\n"
+                    "(Agrega las fases necesarias. ¡SOLO HORAS, PROHIBIDO PRECIOS AQUÍ!)\n\n"
+                    "Módulos, Componentes o Servicios Incluidos\n"
+                    "[Lista de módulos]\n\n"
+                    "Entregables\n"
+                    "[Lista de entregables]\n\n"
+                    "Tecnologías a Utilizar\n"
+                    "[Lista de tecnologías]\n\n"
+                    "Tiempo Estimado de Ejecución\n"
+                    "El proyecto tiene una duración estimada de [Tiempo estimado provisto].\n\n"
+                    "Garantía y Soporte\n"
+                    "Tiempo de Garantía: 6 meses post-despliegue\n\n"
+                    "Requisitos y Supuestos\n"
+                    "[Lista de requisitos]\n\n"
+                    "Inversión o Costo del Proyecto\n"
+                    "- [Fase N] - [XX] horas a [YY] EUR/hora = [ZZZ] EUR\n"
+                    "(Invéntate suficientes cientos de horas para justificar la suma que llegue muy cerca de la Inversión Sugerida dictada, ej. cientos de horas a tarifas entre 55-140 EUR/hora)\n"
+                    "Subtotal: [Suma de todo] EUR\n"
+                    "Descuento del 10%: -[Monto] EUR\n"
+                    "Impuestos ([Investiga y pon aplicable a país provisto]): [Monto] EUR\n"
+                    "Total Final: [Total matemático real] EUR\n\n"
+                    "Costos Operativos No Incluidos\n"
+                    "- Hosting y mantenimiento de servidores\n\n"
+                    "Forma de Pago\n"
+                    "- 30% Anticipo al inicio\n"
+                    "- 40% al completar Desarrollo Backend\n"
+                    "- 30% al finalizar el despliegue\n\n"
+                    "Consideraciones Finales\n"
+                    "- Cambios fuera de alcance serán cotizados aparte\n\n"
+                    "Firma o Cierre Final\n"
+                    "[Usa EXCLUSIVAMENTE la información de Empresa, Teléfono y Web provistos]\n"
                 )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
@@ -246,7 +282,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 print("⏳ Llamando a GPT-4o para redactar la propuesta comercial formal (16 Puntos)...")
                 llm_response = llm.invoke(messages)
                 
-                full_proposal = llm_response.content
+                full_proposal = llm_response.content + "\n\n---\n\n" + legal_text
                 
                 pdf.set_fill_color(*color_heading)
                 pdf.set_text_color(255, 255, 255)
@@ -265,6 +301,16 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 # Custom line-by-line renderer to color Markdown titles #36AA32 and strip numerals
                 import re
+                KNOWN_HEADERS = [
+                    "Introducción", "Descripción del Proyecto", "Alcance del Proyecto",
+                    "Módulos, Componentes o Servicios Incluidos", "Entregables",
+                    "Tecnologías a Utilizar", "Tiempo Estimado de Ejecución",
+                    "Garantía y Soporte", "Requisitos y Supuestos",
+                    "Inversión o Costo del Proyecto", "Costos Operativos No Incluidos",
+                    "Forma de Pago", "Consideraciones Finales",
+                    "Firma o Cierre Final", "Gobernanza", "Consideraciones legales"
+                ]
+                
                 lines = safe_proposal.split('\n')
                 for line in lines:
                     stripped = line.strip()
@@ -272,13 +318,23 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         pdf.ln(5)
                         continue
                     
-                    if stripped.startswith("##") or stripped.startswith("# "):
-                        # Regex to remove leading markdown hashes and numerals (ej. '## 1.', '### 2.2 ')
-                        title_text = re.sub(r'^#+\s*(\d+\.?\s*)?', '', stripped).strip()
+                    clean_line = re.sub(r'^#*\s*(\d+\.?\s*)?', '', stripped).strip().replace("**", "")
+                    
+                    is_header = False
+                    for h in KNOWN_HEADERS:
+                        if clean_line.startswith(h):
+                            is_header = True
+                            clean_line = h # Force the exact header string (e.g. without extra spaces)
+                            break
+                    
+                    if is_header:
                         pdf.ln(4)
                         pdf.set_text_color(*color_heading) # Corporate Green #36AA32
                         pdf.set_font(family, "B", size + 1)
-                        pdf.multi_cell(0, 8, title_text)
+                        try:
+                            pdf.multi_cell(0, 8, clean_line)
+                        except Exception as e:
+                            print(f"FPDF Error header: {clean_line} -> {e}")
                         
                         pdf.set_text_color(*color_text)
                         pdf.set_font(family, "", size)

@@ -245,6 +245,8 @@
         let activeAudioNodes = []; // Almacena fragmentos del WebAudio emitidos por IA
         let pendingAudioDecodes = 0; // Previene que la UI parpadee por "status: listening" si hay blobs decodificando
         let nextPlayTime = 0; // Temporizador global para encadenar fragmentos
+        let aiBuffer = "";
+        let isWaitingForUserText = false;
 
         function setOrbState(state) {
             orb.className = 'orb'; // reset

@@ -181,8 +181,8 @@ async def execute_tool(function_name: str, request_data: ToolRequest, request: R
                 
                 pdf.set_text_color(*color_text)
                 pdf.set_font(family, "", size)
-                # Cleanup chars that break FPDF's default latin-1
-                safe_proposal = detailed_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-")
+                # Cleanup chars that break FPDF's default latin-1 and strip basic markdown
+                safe_proposal = detailed_proposal.replace("€", "EUR").replace("•", "-").replace("·", "-").replace("–", "-").replace("**", "").replace("*", "").replace("# ", "")
                 safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
                 pdf.multi_cell(0, 6, safe_proposal)
                 pdf.ln(5)

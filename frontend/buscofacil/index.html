@@ -498,35 +498,54 @@
                             }
                         }
 
+                        if (data.status === "reasoning" && !isWaitingForUserText) {
+                             isWaitingForUserText = true;
+                        }
+
                         if (data.transcription) {
                             tContent.innerHTML += `<div class="text-user">Usuario: ${data.transcription}</div>`;
                             tBox.scrollTop = tBox.scrollHeight;
+                            
+                            // Flush the buffered AI text
+                            isWaitingForUserText = false;
+                            if (aiBuffer.length > 0) {
+                                let lastMsg = document.createElement('div');
+                                lastMsg.className = 'text-ai';
+                                lastMsg.innerHTML = 'IA: ' + aiBuffer;
+                                tContent.appendChild(lastMsg);
+                                aiBuffer = "";
+                                tBox.scrollTop = tBox.scrollHeight;
+                            }
                         }
                         
                         if (data.status === "listening_delta" && data.delta) {
-                            // Find the last AI message, if it doesn't exist or we just started a new response, create one
-                            let lastMsg = tContent.lastElementChild;
-                            if (!lastMsg || !lastMsg.classList.contains('text-ai') || lastMsg.getAttribute('data-finished') === 'true') {
-                                lastMsg = document.createElement('div');
-                                lastMsg.className = 'text-ai';
-                                lastMsg.innerHTML = 'IA: ';
-                                tContent.appendChild(lastMsg);
+                            if (isWaitingForUserText) {
+                                aiBuffer += data.delta;
+                            } else {
+                                let lastMsg = tContent.lastElementChild;
+                                if (!lastMsg || !lastMsg.classList.contains('text-ai') || lastMsg.getAttribute('data-finished') === 'true') {
+                                    lastMsg = document.createElement('div');
+                                    lastMsg.className = 'text-ai';
+                                    lastMsg.innerHTML = 'IA: ';
+                                    tContent.appendChild(lastMsg);
+                                }
+                                lastMsg.innerHTML += data.delta;
+                                tBox.scrollTop = tBox.scrollHeight;
                             }
-                            // Append the delta
-                            lastMsg.innerHTML += data.delta;
-                            tBox.scrollTop = tBox.scrollHeight;
                         }
                         
                         if (data.response) {
-                            // Ensure the final block is marked as finished if we were streaming
-                            let lastMsg = tContent.lastElementChild;
-                            if (lastMsg && lastMsg.classList.contains('text-ai') && !lastMsg.getAttribute('data-finished')) {
-                                lastMsg.setAttribute('data-finished', 'true');
+                            if (isWaitingForUserText) {
+                                aiBuffer = data.response; // In case delta was missed
                             } else {
-                                // Fallback just in case delta streaming wasn't used for this message
-                                tContent.innerHTML += `<div class="text-ai" data-finished="true">IA: ${data.response}</div>`;
+                                let lastMsg = tContent.lastElementChild;
+                                if (lastMsg && lastMsg.classList.contains('text-ai') && !lastMsg.getAttribute('data-finished')) {
+                                    lastMsg.setAttribute('data-finished', 'true');
+                                } else {
+                                    tContent.innerHTML += `<div class="text-ai" data-finished="true">IA: ${data.response}</div>`;
+                                }
+                                tBox.scrollTop = tBox.scrollHeight;
                             }
-                            tBox.scrollTop = tBox.scrollHeight;
                         }
 
                         if (data.status === "listening") {

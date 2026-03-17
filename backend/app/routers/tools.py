@@ -332,7 +332,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         pdf.set_text_color(*color_heading) # Corporate Green #36AA32
                         pdf.set_font(family, "B", size + 1)
                         try:
-                            pdf.multi_cell(0, 8, clean_line)
+                            pdf.multi_cell(0, 8, clean_line, new_x="LMARGIN", new_y="NEXT")
                         except Exception as e:
                             print(f"FPDF Error header: {clean_line} -> {e}")
                         
@@ -342,14 +342,14 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         # Basic bold for full bold lines
                         pdf.set_font(family, "B", size)
                         try:
-                            pdf.multi_cell(0, 6, stripped.replace("**", ""))
+                            pdf.multi_cell(0, 6, stripped.replace("**", ""), new_x="LMARGIN", new_y="NEXT")
                         except Exception as e:
                             print(f"FPDF Error in bold line: {stripped} -> {e}")
                         pdf.set_font(family, "", size)
                     else:
                         # Standard Markdown processing for normal lines (handles bold in the middle)
                         try:
-                            pdf.multi_cell(0, 6, stripped)
+                            pdf.multi_cell(0, 6, stripped, new_x="LMARGIN", new_y="NEXT")
                         except Exception as e:
                             print(f"FPDF Error in markdown line: {stripped} -> {e}")
                 
@@ -364,7 +364,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 pdf.set_text_color(*color_text)
                 pdf.set_font(family, "", size)
                 
-                pdf.multi_cell(0, 10, f"- Requerimiento: {project_details}\\n- Tiempo Estimado: {estimated_time}\\n- Inversión Aproximada: {safe_cost}")
+                pdf.multi_cell(0, 10, f"- Requerimiento: {project_details}\\n- Tiempo Estimado: {estimated_time}\\n- Inversión Aproximada: {safe_cost}", new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(10)
             
             # Binary PDF output for Resend

@@ -137,7 +137,7 @@ def chat_with_agent(request: ChatRequest):
     decidirá si necesita consultar la base vectorial, raspar una web, 
     o simplemente responder basándose en su conocimiento.
     """
-    result = agent_manager.process_query(request.query, request.session_id, request.project_id)
+    result = agent_manager.process_query(request.query, request.project_id, request.session_id)
     return result
 
 # Configuración del Gateway de Voz Full Duplex

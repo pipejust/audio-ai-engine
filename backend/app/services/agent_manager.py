@@ -25,66 +25,126 @@ class AgentManager:
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
 
     def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session") -> dict:
-        """Envía un prompt al modelo y retorna la respuesta."""
+        """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
         if not query or not str(query).strip():
             return {"response": "", "status": "ignored"}
             
-        print(f"🤖 Agente procesando: '{query}' para proyecto: '{project_id}'")
+        print(f"🤖 Text Agent procesando: '{query}' para proyecto: '{project_id}'")
         
         try:
             if query == "system_greeting_trigger":
-                # Saludo proactivo inicial siempre en español. Bypassar Todo el RAG y LLM para que sea instantáneo.
                 instant_response = f"Mucho gusto mi nombre es {self.bot_name} de {self.company_name} y te ayudaré con lo que necesites."
                 return {
                     "response": instant_response,
                     "status": "success"
                 }
-            
-            prompt_text = query
-                
-            # 1. Recuperar contexto (RAG) usando la consulta completa para atrapar semántica real
-            print(f"🔍 Búsqueda RAG sobre query original: {query}")
-            retriever = self.vector_store.get_retriever(k=15, project_id=project_id)
-            docs = retriever.invoke(query)
-            
-            # deduplicar documentos por contenido para evitar repeticiones
-            unique_docs = []
-            seen_content = set()
-            for d in docs:
-                if d.page_content not in seen_content:
-                    unique_docs.append(d)
-                    seen_content.add(d.page_content)
-            
-            num_docs = len(unique_docs)
-            
-            context_text = f"RESULTADOS ENCONTRADOS EN BASE DE DATOS: {num_docs} propiedades.\n\n"
-            context_text += "\n".join([d.page_content for d in unique_docs]) if unique_docs else "No hay propiedades que coincidan."
 
-            prompt_text = (
-                f"User message: \"{prompt_text}\"\n\n"
-                f"Context provided from database (Use this to answer if relevant):\n{context_text}\n\n"
-                "-> YOUR MANDATORY RULE: Reply to the above message in the EXACT SAME LANGUAGE it was written in. Do not use any other language."
-            )
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+            from app.core.prompts import get_agent_tools
+            from app.routers.tools import execute_tool, ToolRequest
+            import json
 
-            # Cargar instrucciones dinámicas según el proyecto
+            # 1. Cargar las mismas Instrucciones que el Bot de Voz
             dynamic_instructions = get_agent_instructions(project_id, self.bot_name, self.company_name)
             system_prompt = SystemMessage(content=dynamic_instructions)
-            
-            # Cargar historial de la sesión
+
+            # 2. Cargar las mismas Tools pero adaptar schema Realtime -> ChatCompletion
+            raw_tools = get_agent_tools(project_id)
+            chat_tools = []
+            for t in raw_tools:
+                chat_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": t.get("name"),
+                        "description": t.get("description"),
+                        "parameters": t.get("parameters", {})
+                    }
+                })
+
+            # Usamos GPT-4o-mini para el Chat de Texto, que soporta perfecto function calling
+            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+            if chat_tools:
+                llm = llm.bind_tools(chat_tools)
+
+            # 3. Inicializar Historial
             if session_id not in self.sessions:
                 self.sessions[session_id] = []
-            history = self.sessions[session_id][-50:] # Mantener últimos 50 mensajes
             
-            messages = [system_prompt] + history + [("human", prompt_text)]
-            response = self.llm.invoke(messages)
+            # Limitar a los últimos 40 mensajes para no reventar contexto
+            history = self.sessions[session_id][-40:]
             
-            # Guardar en memoria: query pura (sin chunk RAG completo) y su respuesta
-            if query != "system_greeting_trigger":
-                self.sessions[session_id].append(("human", query))
-                self.sessions[session_id].append(("ai", response.content))
+            # 4. Iniciar la cadena de llamadas
+            messages = [system_prompt] + history + [HumanMessage(content=query)]
+            
+            # 5. Bucle de Tool Calling
+            max_iterations = 5
+            for i in range(max_iterations):
+                response = llm.invoke(messages)
+                messages.append(response)
+
+                tool_calls = getattr(response, "tool_calls", None)
+                if not tool_calls and hasattr(response, "additional_kwargs"):
+                    tool_calls = response.additional_kwargs.get("tool_calls", [])
+                
+                if not tool_calls:
+                    # El LLM terminó de pensar y respondió en texto final
+                    break
+
+                # Ejecutar cada tool que el LLM solicitó
+                for tool_call in tool_calls:
+                    # Langchain newer versions dict format or older additional_kwargs format (which requires json loads)
+                    import json
+                    if isinstance(tool_call, dict) and "function" in tool_call:
+                        # Formato antiguo de OpenAI
+                        function_name = tool_call["function"]["name"]
+                        args = json.loads(tool_call["function"]["arguments"])
+                        tool_call_id = tool_call.get("id", "call_123")
+                    else:
+                        # Formato nuevo de LangChain
+                        function_name = tool_call["name"]
+                        args = tool_call["args"]
+                        tool_call_id = tool_call.get("id", "call_123")
+                    
+                    print(f"🛠️ LLM Text invoked tool: {function_name} with args: {args}")
+                    
+                    # Simular petición para ejecutar la misma lógica de los WebSockets
+                    class MockState:
+                        def __init__(self, am):
+                            self.agent_manager = am
+                    class MockApp:
+                        def __init__(self, am):
+                            self.state = MockState(am)
+                    class MockRequest:
+                        def __init__(self, am):
+                            self.app = MockApp(am)
+                    
+                    mock_req = MockRequest(self)
+                    tool_req = ToolRequest(project_id=project_id, args=args)
+                    
+                    try:
+                        # Ejecución local síncrona
+                        data = execute_tool(function_name, tool_req, mock_req)
+                        result_text = data.get("result_text", "Done.")
+                    except Exception as e:
+                        print(f"❌ Tool Error in Text Chat: {e}")
+                        result_text = f"Error ejecutando la herramienta: {e}"
+
+                    # Añadir la respuesta de la tool a la conversación
+                    messages.append(ToolMessage(
+                        content=result_text,
+                        tool_call_id=tool_call_id,
+                        name=function_name
+                    ))
+
+            final_text = response.content
+            
+            # 6. Guardar solo el turno final en memoria limpia para reanudar más fácil
+            self.sessions[session_id].append(HumanMessage(content=query))
+            self.sessions[session_id].append(AIMessage(content=final_text))
             
             return {
-                "response": response.content,
+                "response": final_text,
                 "status": "success"
             }
                 
@@ -92,6 +152,6 @@ class AgentManager:
             print(f"❌ Error en AgentManager:")
             traceback.print_exc()
             return {
-                "response": "Lo siento, mi motor de agentes tuvo un inconveniente.",
+                "response": "Lo siento, mi motor de texto tuvo un inconveniente.",
                 "status": "error"
             }

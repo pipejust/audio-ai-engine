@@ -42,10 +42,11 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         
         safe_limit = min(int(limit), 20)
         
-        retriever = agent_manager.vector_store.get_retriever(k=80, project_id=project_id)
+        retriever = agent_manager.vector_store.get_retriever(k=300, project_id=project_id)
         raw_docs = retriever.invoke(search_query)
         
         filtered_docs = []
+        seen_ids = set()
         
         def normalize_str(s):
             import unicodedata
@@ -56,6 +57,11 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         
         if raw_docs:
             for d in raw_docs:
+                p_id = d.metadata.get("property_id")
+                if p_id and p_id in seen_ids:
+                    continue
+                if p_id: seen_ids.add(p_id)
+                
                 page_norm = normalize_str(d.page_content)
                 meta_loc = normalize_str(d.metadata.get("location_search", ""))
                 meta_type = normalize_str(d.metadata.get("property_type", ""))
@@ -138,33 +144,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             pdf.add_page()
             
             # Global Font
+            # Global Font
             try: pdf.set_font(family, size=size)
             except: pdf.set_font("helvetica", size=size) # fallback
-            
-            # --- COMPANY HEADER ---
-            if c_name or c_phone or c_web:
-                pdf.set_text_color(*color_heading)
-                pdf.set_font(family, "B", size + 6)
-                pdf.cell(0, 8, c_name if c_name else "Propuesta Comercial", new_x="LMARGIN", new_y="NEXT", align="R")
-                
-                pdf.set_text_color(*color_text)
-                pdf.set_font(family, "", size - 2)
-                if c_id: pdf.cell(0, 5, f"NIT/ID: {c_id}", new_x="LMARGIN", new_y="NEXT", align="R")
-                if c_address: pdf.cell(0, 5, c_address, new_x="LMARGIN", new_y="NEXT", align="R")
-                if c_phone: pdf.cell(0, 5, f"Tel: {c_phone}", new_x="LMARGIN", new_y="NEXT", align="R")
-                if c_web: pdf.cell(0, 5, c_web, new_x="LMARGIN", new_y="NEXT", align="R")
-                
-                pdf.ln(5)
-                pdf.set_draw_color(*color_heading)
-                pdf.set_line_width(0.5)
-                pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-                pdf.ln(10)
-            
-            # Title
-            pdf.set_text_color(*color_heading)
-            pdf.set_font(family, "B", size + 4)
-            pdf.cell(0, 10, "PROPUESTA DE DESARROLLO DE SOFTWARE", new_x="LMARGIN", new_y="NEXT", align="C")
-            pdf.ln(10)
             
             # (El saludo "Estimado" se elimina ya que el usuario pidió quitarlo y usar el LLM para iniciar sin saludo)
             
@@ -206,56 +188,70 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 )
 
                 strict_rules = (
-                    "ERES UN REDACTOR EXPERTO Y DEBES SEGUIR OBLIGATORIAMENTE ESTA PLANTILLA EXACTA AL PIE DE LA LETRA.\n"
-                    "NO INVENTES SECCIONES. NO ELIMINES SECCIONES. USA LOS TÍTULOS EXACTAMENTE COMO ESTÁN AQUÍ SIN NÚMEROS Y SIN '#' ANTES DEL TÍTULO.\n"
-                    "NUNCA uses subtítulos con números (ej. NO '1. Introducción', SÓLO 'Introducción').\n"
-                    "NUNCA uses saludos iniciales como 'Estimado'. Empieza directamente con 'Ciudad:'.\n\n"
+                    "ERES UN REDACTOR EXPERTO Y DEBES SEGUIR OBLIGATORIAMENTE ESTA PLANTILLA EXACTA.\n"
+                    "Copia la estructura al pie de la letra, manteniendo los espacios y la numeración exacta de los títulos (ej. '##1. Introducción').\n"
+                    "OBLIGATORIO: Sustituye los valores entre corchetes con la información real, calcúlala lógicamente para que todo coincida, pero NO PONGAS PRECIOS EN EL ALCANCE.\n\n"
                     "PLANTILLA OBLIGATORIA:\n"
-                    "Ciudad: [Inserta Capital del país provisto]\n"
-                    "Fecha: [Inserta la fecha provista]\n"
-                    "Código de Cotización: [Inserta código provisto]\n"
-                    "Cliente: [Inserta el Cliente provisto]\n"
-                    "Contacto: [Inserta el Contacto provisto]\n"
-                    "Proyecto: [Título Corto del Proyecto]\n"
-                    "Asunto: Propuesta comercial para [Tema]\n"
-                    "---\n"
-                    "Introducción\n"
-                    "[Escribe 1 párrafo introductorio]\n\n"
-                    "Descripción del Proyecto\n"
-                    "[Escribe 1 párrafo de la descripción]\n\n"
-                    "Alcance del Proyecto\n"
-                    "El proyecto se dividirá en las siguientes fases:\n"
-                    "- Fase 1: [Nombre de la Fase] - [XX] horas\n"
-                    "(Agrega las fases necesarias. ¡SOLO HORAS, PROHIBIDO PRECIOS AQUÍ!)\n\n"
-                    "Módulos, Componentes o Servicios Incluidos\n"
-                    "[Lista de módulos]\n\n"
-                    "Entregables\n"
-                    "[Lista de entregables]\n\n"
-                    "Tecnologías a Utilizar\n"
-                    "[Lista de tecnologías]\n\n"
-                    "Tiempo Estimado de Ejecución\n"
-                    "El proyecto tiene una duración estimada de [Tiempo estimado provisto].\n\n"
-                    "Garantía y Soporte\n"
-                    "Tiempo de Garantía: 6 meses post-despliegue\n\n"
-                    "Requisitos y Supuestos\n"
-                    "[Lista de requisitos]\n\n"
-                    "Inversión o Costo del Proyecto\n"
-                    "- [Fase N] - [XX] horas a [YY] EUR/hora = [ZZZ] EUR\n"
-                    "(Invéntate suficientes cientos de horas para justificar la suma que llegue muy cerca de la Inversión Sugerida dictada, ej. cientos de horas a tarifas entre 55-140 EUR/hora)\n"
-                    "Subtotal: [Suma de todo] EUR\n"
-                    "Descuento del 10%: -[Monto] EUR\n"
-                    "Impuestos ([Investiga y pon aplicable a país provisto]): [Monto] EUR\n"
-                    "Total Final: [Total matemático real] EUR\n\n"
-                    "Costos Operativos No Incluidos\n"
-                    "- Hosting y mantenimiento de servidores\n\n"
-                    "Forma de Pago\n"
-                    "- 30% Anticipo al inicio\n"
-                    "- 40% al completar Desarrollo Backend\n"
-                    "- 30% al finalizar el despliegue\n\n"
-                    "Consideraciones Finales\n"
-                    "- Cambios fuera de alcance serán cotizados aparte\n\n"
-                    "Firma o Cierre Final\n"
-                    "[Usa EXCLUSIVAMENTE la información de Empresa, Teléfono y Web provistos]\n"
+                    "PROPUESTA DE DESARROLLO DE SOFTWARE\n\n"
+                    "Estimado/a [Nombre del Cliente],\n\n"
+                    "Adjuntamos la estimación para su requerimiento de software:\n\n"
+                    "Propuesta Técnica y Comercial:\n"
+                    "Ciudad y Fecha: [Capital del país], [Fecha de hoy]\n"
+                    "Código de Cotización: [Código]\n"
+                    "Nombre del Cliente: [Nombre del Cliente]\n"
+                    "Nombre del Contacto: [Nombre del Contacto]\n"
+                    "Nombre del Proyecto: [Nombre del Proyecto]\n"
+                    "Asunto: Propuesta para el desarrollo de [Tema]\n"
+                    "---\n\n"
+                    "##1. Introducción\n"
+                    "Estimado Sr./Sra. [Apellido del cliente],\n"
+                    "En respuesta a su solicitud, nos complace presentar la propuesta para el desarrollo de [Proyecto]. Este proyecto está diseñado para satisfacer la necesidad de [Objetivo principal], optimizado para su funcionamiento en [País] y a nivel mundial.\n\n"
+                    "##2. Descripción del Proyecto\n"
+                    "[Escribe 1 párrafo detallando de qué trata el software/app, cómo funcionará y plataformas objetivo]\n\n"
+                    "##3. Alcance del Proyecto\n"
+                    "Fases y Horas Estimadas (Asigna un total de horas uniforme para que el subtotal matemático cuadre exactamente a 50 EUR/hora según el sugerido):\n"
+                    "- Fase 1: [Nombre de fase] - [XX] horas\n"
+                    "(Agrega las fases necesarias dictadas por la lógica del software)\n\n"
+                    "##4. Módulos, Componentes o Servicios Incluidos\n"
+                    "- [Lista viñeteada de módulos]\n\n"
+                    "##5. Entregables\n"
+                    "- [Lista viñeteada de entregables, ej. Código fuente, Manuales, Despliegue...]\n\n"
+                    "##6. Tecnologías a Utilizar\n"
+                    "- [Lista viñeteada de tecnologías front, back, db, etc.]\n\n"
+                    "##7. Tiempo Estimado de Ejecución\n"
+                    "La duración total estimada para la ejecución del proyecto es de [Tiempo estimado], comenzando formalmente tras la aprobación final y recepción de los insumos necesarios del cliente.\n\n"
+                    "##8. Garantía y Soporte\n"
+                    "- Tiempo de Garantía: 6 meses posteriores al despliegue\n"
+                    "- Cobertura: Corrección de errores y soporte técnico básico\n"
+                    "- Exclusiones: Modificaciones y nuevas funcionalidades\n\n"
+                    "##9. Inversión o Costo del Proyecto\n"
+                    "OBLIGATORIO: Toma el punto medio exacto de la Inversión Sugerida. Usa una tarifa estandarizada de 50 EUR/hora y multiplica para que el subtotal inicial coincida. Investiga y aplica el porcentaje de IVA/Tax correspondiente al país del usuario.\n"
+                    "- Fase 1: [Nombre] - [XX] horas a 50 EUR/hora = [ZZZ] EUR\n"
+                    "(Desglosa cada fase de manera idéntica al Alcance acordando la suma)\n"
+                    "Subtotal general: [Suma de fases] EUR\n"
+                    "Descuento Comercial (10%): -[Monto] EUR\n"
+                    "Base Imponible Neto: [Neto] EUR\n"
+                    "Impuestos ([Nombre del Impuesto y Porcentaje (%) aplicable en el País del Cliente, Ej. IVA 21%, VAT 18%, IVA 19%, o Exento]): [Impuesto Calculado sobre Neto] EUR\n"
+                    "Inversión Total a Pagar: [Total Final Matemático] EUR\n\n"
+                    "##10. Costos Operativos No Incluidos\n"
+                    "- Hosting y servidores en AWS\n"
+                    "- Licencias de software de terceros\n"
+                    "- Costos de mantenimiento recurrente\n\n"
+                    "##11. Forma de Pago\n"
+                    "- Anticipo del 30% al inicio del proyecto\n"
+                    "- 40% al completar la fase de Desarrollo Backend\n"
+                    "- 30% al finalizar el despliegue y monitoreo\n\n"
+                    "##12. Consideraciones Finales\n"
+                    "- Cualquier cambio fuera del alcance será cotizado aparte.\n"
+                    "- Los tiempos están sujetos a aprobaciones oportunas del cliente.\n"
+                    "- Cuentas de terceros deben estar a nombre del cliente.\n"
+                    "- La propuesta tiene vigencia comercial de 30 días.\n\n"
+                    "##13. Datos de Pago y Cierre Comercial\n"
+                    "Nombre de la Empresa Proveedora: [Nombre Empresa]\n"
+                    "Teléfono: [Teléfono Empresa]\n"
+                    "Web: [Web Empresa]\n\n"
+                    "##14. Firma o Cierre Final\n"
+                    "Agradecemos la oportunidad de colaborar en este proyecto y esperamos poder iniciar una relación comercial fructífera. No dude en contactarnos para cualquier consulta adicional.\n"
                 )
                 
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
@@ -284,13 +280,6 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 full_proposal = llm_response.content + "\n\n---\n\n" + legal_text
                 
-                pdf.set_fill_color(*color_heading)
-                pdf.set_text_color(255, 255, 255)
-                pdf.set_font(family, "B", size + 2)
-                pdf.ln(5)
-                pdf.cell(0, 12, "Propuesta Técnica y Comercial", new_x="LMARGIN", new_y="NEXT", fill=True, align="C")
-                pdf.ln(10)
-                
                 pdf.set_text_color(*color_text)
                 pdf.set_font(family, "", size)
                 
@@ -299,16 +288,16 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 safe_proposal = safe_proposal.replace(r"\n", "\n") # Fix literal escaped newlines just in case
                 safe_proposal = safe_proposal.encode('latin-1', 'ignore').decode('latin-1')
                 
-                # Custom line-by-line renderer to color Markdown titles #36AA32 and strip numerals
+                # Custom line-by-line renderer to color Markdown titles #36AA32
                 import re
                 KNOWN_HEADERS = [
-                    "Introducción", "Descripción del Proyecto", "Alcance del Proyecto",
-                    "Módulos, Componentes o Servicios Incluidos", "Entregables",
-                    "Tecnologías a Utilizar", "Tiempo Estimado de Ejecución",
-                    "Garantía y Soporte", "Requisitos y Supuestos",
-                    "Inversión o Costo del Proyecto", "Costos Operativos No Incluidos",
-                    "Forma de Pago", "Consideraciones Finales",
-                    "Firma o Cierre Final", "Gobernanza", "Consideraciones legales"
+                    "1. Introducción", "2. Descripción del Proyecto", "3. Alcance del Proyecto",
+                    "4. Módulos, Componentes o Servicios Incluidos", "5. Entregables",
+                    "6. Tecnologías a Utilizar", "7. Tiempo Estimado de Ejecución",
+                    "8. Garantía y Soporte", "9. Inversión o Costo del Proyecto", 
+                    "10. Costos Operativos No Incluidos", "11. Forma de Pago", 
+                    "12. Consideraciones Finales", "13. Datos de Pago y Cierre Comercial",
+                    "14. Firma o Cierre Final", "Gobernanza", "Consideraciones legales"
                 ]
                 
                 lines = safe_proposal.split('\n')
@@ -318,13 +307,14 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         pdf.ln(5)
                         continue
                     
-                    clean_line = re.sub(r'^#*\s*(\d+\.?\s*)?', '', stripped).strip().replace("**", "")
+                    # Regex to remove ONLY markdown hashes. It keeps numbers. (e.g. '##1. Introducción' -> '1. Introducción')
+                    clean_line = re.sub(r'^#*\s*', '', stripped).strip().replace("**", "")
                     
                     is_header = False
                     for h in KNOWN_HEADERS:
                         if clean_line.startswith(h):
                             is_header = True
-                            clean_line = h # Force the exact header string (e.g. without extra spaces)
+                            clean_line = clean_line # Keep the exact numbered header as requested
                             break
                     
                     if is_header:
@@ -369,6 +359,14 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             
             # Binary PDF output for Resend
             pdf_bytes_global = bytes(pdf.output())
+            
+            # Debug tool: Intercept and save the absolute final PDF block locally before trusting SMTP
+            try:
+                with open("/tmp/latest_quote_debug.pdf", "wb") as debug_file:
+                    debug_file.write(pdf_bytes_global)
+                print("✅ TEST LOCAL: Se guardó en /tmp/latest_quote_debug.pdf")
+            except Exception as e:
+                print(f"Error escribiendo PDF debug local: {e}")
             
             # 2. Setup standard SMTP
             if not smtp_obj or not smtp_obj.smtp_host or not smtp_obj.smtp_pass:

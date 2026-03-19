@@ -135,20 +135,29 @@ DESCRIPCIÓN: {observations}
 ENLACE PARA EL CLIENTE: {url}
 ---
 """
-        # Tipo de inmueble (Fallback usando el título si label no existe)
-        title_lower = title.lower()
-        if "casa" in title_lower:
-            prop_type = "casa"
-        elif "apartamento" in title_lower or "apto" in title_lower:
-            prop_type = "apartamento"
-        elif "lote" in title_lower:
-            prop_type = "lote"
-        elif "local" in title_lower:
-            prop_type = "local"
-        elif "finca" in title_lower:
-            prop_type = "finca"
-        else:
-            prop_type = prop.get("property_type_label", "").lower()
+        # Tipo de inmueble (Extraído del link para mayor precisión, fallback al título)
+        prop_type = ""
+        actual_link = prop.get("link", "").lower()
+        if actual_link:
+            parts = actual_link.split("/")
+            if len(parts) >= 2:
+                slug = parts[-2]
+                prop_type = slug.split("-")[0]
+                
+        if not prop_type:
+            title_lower = title.lower()
+            if "casa" in title_lower:
+                prop_type = "casa"
+            elif "apartamento" in title_lower or "apto" in title_lower:
+                prop_type = "apartamento"
+            elif "lote" in title_lower:
+                prop_type = "lote"
+            elif "local" in title_lower:
+                prop_type = "local"
+            elif "finca" in title_lower:
+                prop_type = "finca"
+            else:
+                prop_type = prop.get("property_type_label", "").lower()
 
         return {
             "text": formatted_text.strip(),

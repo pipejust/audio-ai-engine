@@ -79,6 +79,7 @@ class AgentManager:
             
             # 5. Bucle de Tool Calling
             max_iterations = 5
+            all_raw_properties = []
             for i in range(max_iterations):
                 response = llm.invoke(messages)
                 messages.append(response)
@@ -126,6 +127,8 @@ class AgentManager:
                         # Ejecución local síncrona
                         data = execute_tool(function_name, tool_req, mock_req)
                         result_text = data.get("result_text", "Done.")
+                        if "raw_properties" in data:
+                            all_raw_properties.extend(data["raw_properties"])
                     except Exception as e:
                         print(f"❌ Tool Error in Text Chat: {e}")
                         result_text = f"Error ejecutando la herramienta: {e}"
@@ -145,7 +148,8 @@ class AgentManager:
             
             return {
                 "response": final_text,
-                "status": "success"
+                "status": "success",
+                "resultados": all_raw_properties
             }
                 
         except Exception as e:

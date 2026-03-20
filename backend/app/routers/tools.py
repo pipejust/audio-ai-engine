@@ -72,19 +72,46 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     continue
                     
                 filtered_docs.append(d)
-                if len(filtered_docs) >= safe_limit:
+                if len(filtered_docs) >= 100:
                     break
         
+        raw_properties = []
+        import re
+        for d in filtered_docs:
+            content = d.page_content
+            title_match = re.search(r"TÍTULO:\s*(.*)", content)
+            title = title_match.group(1).strip() if title_match else "Propiedad"
+            
+            price_match = re.search(r"TIPO DE NEGOCIO:\s*(.*)", content)
+            price_str = price_match.group(1).strip() if price_match else "0"
+            numerics = re.findall(r"\d+", price_str.replace(".", ""))
+            precio_int = int(numerics[0]) if numerics else 0
+            
+            prop_id = d.metadata.get("property_id", "")
+            url_res = re.search(r"ENLACE PARA EL CLIENTE:\s*(.*)", content)
+            link_str = url_res.group(1).strip() if url_res else ""
+            
+            raw_properties.append({
+                "id": prop_id,
+                "titulo": title,
+                "precio": precio_int,
+                "link": link_str,
+                "imagenes": [] # La db vectorial no guarda blobs, se deja vacío para que React Native no crashee
+            })
+        
         if filtered_docs:
-            result_text = f"RESULTADO DE BASE DE DATOS: Encontré las siguientes opciones de {tipo} en {location}:\\n"
-            for i, d in enumerate(filtered_docs):
+            llm_limit = min(int(limit), 15)
+            llm_docs = filtered_docs[:llm_limit]
+            
+            result_text = f"RESULTADO DE BASE DE DATOS: Encontré {len(filtered_docs)} opciones en total. Aquí tienes las top {len(llm_docs)}:\\n"
+            for i, d in enumerate(llm_docs):
                 snippet = d.page_content[:350] + "..." if len(d.page_content) > 350 else d.page_content
                 result_text += f"\\n[{i+1}] {snippet}\\n"
             result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio."
         else:
             result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."
             
-        return {"status": "success", "result_text": result_text}
+        return {"status": "success", "result_text": result_text, "raw_properties": raw_properties}
         
     elif function_name == "schedule_appointment":
         name = args.get("client_name")

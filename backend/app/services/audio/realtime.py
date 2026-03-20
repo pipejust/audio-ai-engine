@@ -322,7 +322,7 @@ class OpenAIRealtimeManager:
                         
                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
                     # Send tool execution to background task to unblock socket
-                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id))
+                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws))
         except Exception as e:
             import traceback
             err_str = traceback.format_exc()
@@ -332,7 +332,7 @@ class OpenAIRealtimeManager:
             except:
                 pass
                     
-    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str):
+    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws):
         """
         Ejecuta el Web Service / Herramienta enviando un payload REST 
         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
@@ -358,6 +358,16 @@ class OpenAIRealtimeManager:
             # Ejecutar directamente en un hilo para evitar bloqueos HTTP o timeout de IPv6 en Uvicorn
             data = await asyncio.to_thread(execute_tool, function_name, tool_req, mock_req)
             result_text = data.get("result_text", "Done.")
+            
+            # Enviar los datos estructurados al frontend React Native inmediatamente para renderizado visual
+            if "raw_properties" in data:
+                try:
+                    await client_ws.send_text(json.dumps({
+                        "status": "search_results",
+                        "resultados": data["raw_properties"]
+                    }))
+                except Exception as e:
+                    print(f"Error enviando propiedades crudas al cliente WS: {e}")
                 
             function_output = {
                 "type": "conversation.item.create", 

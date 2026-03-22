@@ -112,7 +112,20 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             zone_parts = location.split(",")
             zone = zone_parts[1].strip() if len(zone_parts) > 1 else location
             
-            prop_type = d.metadata.get("property_type", "house")
+            stratum_str = extract(r"-\s*Estrato:\s*(\d+)", content, "0")
+            stratum = int(stratum_str) if stratum_str.isdigit() else 0
+            
+            built_time = extract(r"-\s*Tiempo de construcción:\s*(.*)", content, "N/A")
+            
+            prop_type_raw = d.metadata.get("property_type", "casa").lower()
+            if "apartamento" in prop_type_raw or "apto" in prop_type_raw:
+                prop_type_mapped = "apartment"
+            elif "lote" in prop_type_raw or "finca" in prop_type_raw:
+                prop_type_mapped = "land"
+            elif "local" in prop_type_raw or "oficina" in prop_type_raw or "bodega" in prop_type_raw or "comercial" in prop_type_raw:
+                prop_type_mapped = "commercial"
+            else:
+                prop_type_mapped = "house"
             
             raw_properties.append({
                 "id": str(prop_id),
@@ -123,11 +136,15 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 "area": area,
                 "rooms": rooms,
                 "bathrooms": bathrooms,
-                "type": prop_type,
+                "type": prop_type_mapped,
                 "features": features,
-                "images": [], # La db vectorial no guarda blobs, dejamos vacío para UI
-                "matching": 95, 
+                "images": [],
+                "matching": 0.95,
                 "description": desc,
+                "projectInfo": {
+                    "stratum": stratum,
+                    "status": built_time
+                },
                 "createdAt": "2026-03-22T00:00:00Z",
                 "link": url
             })

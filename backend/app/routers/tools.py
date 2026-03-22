@@ -172,13 +172,18 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         
         wasi_client = WasiAPI()
         
-        def fetch_wasi_images_for_id(pid):
+        def fetch_live_wasi_property(pid):
+            """
+            Fetches the live property data directly from WASI to ensure price, status and images are 100% fresh.
+            Returns (pid, live_data_dict) or (pid, None) if unavailable/sold.
+            """
             try:
                 payload = wasi_client._get_payload({"id_property": pid})
-                res = requests.post(f"{wasi_client.base_url}/property/search", data=payload, headers=wasi_client._get_headers(), timeout=2.5)
+                res = requests.post(f"{wasi_client.base_url}/property/search", data=payload, headers=wasi_client._get_headers(), timeout=4.0)
                 data = res.json()
                 for v in data.values():
                     if isinstance(v, dict) and str(v.get("id_property")) == str(pid):
+                        # Extract ALL images
                         images = []
                         if "main_image" in v and isinstance(v["main_image"], dict) and "url" in v["main_image"]:
                             images.append(v["main_image"]["url"])
@@ -190,29 +195,55 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                                     img_url = img_obj["url"]
                                     if img_url not in images:
                                         images.append(img_url)
-                        return pid, images[:6]
-            except Exception:
+                        
+                        # Extract live price
+                        sale_price = int(v.get("sale_price", 0) or 0)
+                        rent_price = int(v.get("rent_price", 0) or 0)
+                        final_price = rent_price if rent_price > 0 else sale_price
+                        
+                        return pid, {
+                            "images": images, # Send ALL images without slicing
+                            "live_price": final_price,
+                            "status_label": v.get("status_on_page_label", "Activo")
+                        }
+            except Exception as e:
+                print(f"Error fetching live WASI property {pid}: {e}")
                 pass
-            return pid, []
+            return pid, None
             
         if filtered_docs:
             llm_limit = min(int(limit), 5)
-            llm_docs = filtered_docs[:llm_limit]
-            
+            # The top properties semantically matched
             top_properties = raw_properties[:llm_limit]
+            
+            # Fetch their LIVE payloads concurrently
+            live_data_map = {}
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                future_to_pid = {executor.submit(fetch_wasi_images_for_id, rp["id"]): rp["id"] for rp in top_properties}
-                id_to_images = {}
+                future_to_pid = {executor.submit(fetch_live_wasi_property, rp["id"]): rp["id"] for rp in top_properties}
                 for future in concurrent.futures.as_completed(future_to_pid):
                     try:
-                        pid, imgs = future.result()
-                        id_to_images[str(pid)] = imgs
+                        pid, live_data = future.result()
+                        live_data_map[str(pid)] = live_data
                     except Exception:
                         pass
                         
+            # Filter and update raw_properties with LIVE data
+            valid_live_properties = []
             for rp in top_properties:
-                rp["images"] = id_to_images.get(str(rp["id"]), [])
-            raw_properties = top_properties
+                live_info = live_data_map.get(str(rp["id"]))
+                if live_info is None:
+                    # Inmueble bajado de WASI o inactivo, lo ignoramos para no mandar basura a la IA
+                    continue
+                    
+                # Update with verified fresh data
+                rp["images"] = live_info["images"]
+                if live_info["live_price"] > 0:
+                    rp["price"] = live_info["live_price"]
+                
+                valid_live_properties.append(rp)
+                
+            raw_properties = valid_live_properties
+            llm_docs = [d for d in filtered_docs if str(d.metadata.get("property_id")) in [rp["id"] for rp in raw_properties]]
             
             result_text = f"RESULTADO DE BASE DE DATOS: Encontré {len(filtered_docs)} opciones en total. Aquí tienes las top {len(llm_docs)}:\\n"
             for i, d in enumerate(llm_docs):

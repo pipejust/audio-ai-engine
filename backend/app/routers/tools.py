@@ -77,26 +77,59 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         
         raw_properties = []
         import re
+        def extract(regex, text, default=""):
+            match = re.search(regex, text)
+            return match.group(1).strip() if match else default
+
         for d in filtered_docs:
             content = d.page_content
-            title_match = re.search(r"TÍTULO:\s*(.*)", content)
-            title = title_match.group(1).strip() if title_match else "Propiedad"
+            title = extract(r"TÍTULO:\s*(.*)", content, "Propiedad")
             
-            price_match = re.search(r"TIPO DE NEGOCIO:\s*(.*)", content)
-            price_str = price_match.group(1).strip() if price_match else "0"
+            price_str = extract(r"TIPO DE NEGOCIO:\s*(.*)", content)
             numerics = re.findall(r"\d+", price_str.replace(".", ""))
             precio_int = int(numerics[0]) if numerics else 0
             
             prop_id = d.metadata.get("property_id", "")
-            url_res = re.search(r"ENLACE PARA EL CLIENTE:\s*(.*)", content)
-            link_str = url_res.group(1).strip() if url_res else ""
+            url = extract(r"ENLACE PARA EL CLIENTE:\s*(.*)", content)
+            location = extract(r"UBICACIÓN:\s*(.*)", content)
+            
+            rooms_str = extract(r"-\s*Habitaciones:\s*(\d+)", content, "0")
+            rooms = int(rooms_str) if rooms_str.isdigit() else 0
+            
+            bathrooms_str = extract(r"-\s*Baños:\s*(\d+)", content, "0")
+            bathrooms = int(bathrooms_str) if bathrooms_str.isdigit() else 0
+            
+            area_str = extract(r"-\s*Área:\s*([\d\.]+)", content, "0")
+            area = float(area_str) if area_str.replace(".","",1).isdigit() else 0.0
+            
+            features_str = extract(r"AMENIDADES:\s*(.*)", content)
+            features = [f.strip() for f in features_str.split(",") if f.strip() and f.strip() != "No listadas"]
+            
+            desc = extract(r"DESCRIPCIÓN:\s*(.*)", content)
+            if len(desc) > 500:
+                desc = desc[:497] + "..."
+                
+            zone_parts = location.split(",")
+            zone = zone_parts[1].strip() if len(zone_parts) > 1 else location
+            
+            prop_type = d.metadata.get("property_type", "house")
             
             raw_properties.append({
-                "id": prop_id,
-                "titulo": title,
-                "precio": precio_int,
-                "link": link_str,
-                "imagenes": [] # La db vectorial no guarda blobs, se deja vacío para que React Native no crashee
+                "id": str(prop_id),
+                "title": title,
+                "location": location,
+                "zone": zone,
+                "price": precio_int,
+                "area": area,
+                "rooms": rooms,
+                "bathrooms": bathrooms,
+                "type": prop_type,
+                "features": features,
+                "images": [], # La db vectorial no guarda blobs, dejamos vacío para UI
+                "matching": 95, 
+                "description": desc,
+                "createdAt": "2026-03-22T00:00:00Z",
+                "link": url
             })
         
         if filtered_docs:

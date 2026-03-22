@@ -364,7 +364,7 @@ class OpenAIRealtimeManager:
                 try:
                     await client_ws.send_text(json.dumps({
                         "status": "search_results",
-                        "resultados": data["raw_properties"]
+                        "listings": data["raw_properties"]
                     }))
                 except Exception as e:
                     print(f"Error enviando propiedades crudas al cliente WS: {e}")

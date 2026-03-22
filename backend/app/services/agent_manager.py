@@ -149,7 +149,7 @@ class AgentManager:
             return {
                 "response": final_text,
                 "status": "success",
-                "resultados": all_raw_properties
+                "listings": all_raw_properties
             }
                 
         except Exception as e:

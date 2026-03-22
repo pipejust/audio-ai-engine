@@ -127,6 +127,23 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             else:
                 prop_type_mapped = "house"
             
+            # Dinamic matching calculation
+            matching_score = 0.95
+            if loc_norm:
+                meta_loc_val = normalize_str(d.metadata.get("location_search", ""))
+                # If location matches main metadata precisely (Zone/City) vs generic text mentions
+                if loc_norm in meta_loc_val:
+                    matching_score = 0.98 - (len(raw_properties) * 0.02)
+                else:
+                    matching_score = 0.85 - (len(raw_properties) * 0.02)
+            else:
+                matching_score = 0.90 - (len(raw_properties) * 0.01)
+                
+            if matching_score < 0.60:
+                matching_score = 0.60
+                
+            matching_score = round(matching_score, 2)
+            
             raw_properties.append({
                 "id": str(prop_id),
                 "title": title,
@@ -139,7 +156,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 "type": prop_type_mapped,
                 "features": features,
                 "images": [],
-                "matching": 0.95,
+                "matching": matching_score,
                 "description": desc,
                 "projectInfo": {
                     "stratum": stratum,

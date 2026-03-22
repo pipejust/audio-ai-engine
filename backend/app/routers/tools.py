@@ -167,14 +167,15 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             })
             
         import concurrent.futures
+        from app.services.wasi_api import WasiAPI
+        import requests
+        
+        wasi_client = WasiAPI()
         
         def fetch_wasi_images_for_id(pid):
             try:
-                from app.services.wasi_api import WasiAPI
-                import requests
-                w = WasiAPI()
-                payload = w._get_payload({"id_property": pid})
-                res = requests.post(f"{w.base_url}/property/search", data=payload, headers=w._get_headers(), timeout=4)
+                payload = wasi_client._get_payload({"id_property": pid})
+                res = requests.post(f"{wasi_client.base_url}/property/search", data=payload, headers=wasi_client._get_headers(), timeout=2.5)
                 data = res.json()
                 for v in data.values():
                     if isinstance(v, dict) and str(v.get("id_property")) == str(pid):
@@ -195,7 +196,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             return pid, []
             
         if filtered_docs:
-            llm_limit = min(int(limit), 15)
+            llm_limit = min(int(limit), 5)
             llm_docs = filtered_docs[:llm_limit]
             
             top_properties = raw_properties[:llm_limit]

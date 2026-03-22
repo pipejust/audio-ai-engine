@@ -165,10 +165,53 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 "createdAt": "2026-03-22T00:00:00Z",
                 "link": url
             })
+            
+        import concurrent.futures
         
+        def fetch_wasi_images_for_id(pid):
+            try:
+                from app.services.wasi_api import WasiAPI
+                import requests
+                w = WasiAPI()
+                payload = w._get_payload({"id_property": pid})
+                res = requests.post(f"{w.base_url}/property/search", data=payload, headers=w._get_headers(), timeout=4)
+                data = res.json()
+                for v in data.values():
+                    if isinstance(v, dict) and str(v.get("id_property")) == str(pid):
+                        images = []
+                        if "main_image" in v and isinstance(v["main_image"], dict) and "url" in v["main_image"]:
+                            images.append(v["main_image"]["url"])
+                            
+                        galleries = v.get("galleries", [])
+                        if isinstance(galleries, list) and len(galleries) > 0:
+                            for k, img_obj in galleries[0].items():
+                                if k.isdigit() and isinstance(img_obj, dict) and "url" in img_obj:
+                                    img_url = img_obj["url"]
+                                    if img_url not in images:
+                                        images.append(img_url)
+                        return pid, images[:6]
+            except Exception:
+                pass
+            return pid, []
+            
         if filtered_docs:
             llm_limit = min(int(limit), 15)
             llm_docs = filtered_docs[:llm_limit]
+            
+            top_properties = raw_properties[:llm_limit]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_pid = {executor.submit(fetch_wasi_images_for_id, rp["id"]): rp["id"] for rp in top_properties}
+                id_to_images = {}
+                for future in concurrent.futures.as_completed(future_to_pid):
+                    try:
+                        pid, imgs = future.result()
+                        id_to_images[str(pid)] = imgs
+                    except Exception:
+                        pass
+                        
+            for rp in top_properties:
+                rp["images"] = id_to_images.get(str(rp["id"]), [])
+            raw_properties = top_properties
             
             result_text = f"RESULTADO DE BASE DE DATOS: Encontré {len(filtered_docs)} opciones en total. Aquí tienes las top {len(llm_docs)}:\\n"
             for i, d in enumerate(llm_docs):

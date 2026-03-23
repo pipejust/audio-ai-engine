@@ -2,11 +2,19 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
     """
     Retorna las instrucciones del sistema (System Prompt) dependiendo del project_id.
     """
+    from datetime import datetime
+    import locale
+    try:
+        locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+    except:
+        pass
+    hoy_str = datetime.now().strftime("%A %d de %B de %Y")
     
     if project_id == "buscofacil":
         company_name_override = "Busco Fácil"
         project_instructions = (
             f"Proyecto: Busco Fácil. Eres un experto asesor inmobiliario trabajando para {company_name_override}. "
+            f"INFORMACIÓN TEMPORAL CRÍTICA: La fecha de hoy es {hoy_str}. TODOS los cálculos de fechas futuras ('este viernes', 'el próximo mes', etc.) deben ser relativos a este año y mes. "
             "Tu objetivo es ayudar al usuario a encontrar el inmueble perfecto y agendar visitas estructuradas. "
             "ADVERTENCIA CRÍTICA: NO inventes inmuebles. Basa todo en el contexto 'RESULTADOS ENCONTRADOS'. "
             "Siempre debes decirle al usuario exactamente cuántas propiedades encontraste y describirlas. "

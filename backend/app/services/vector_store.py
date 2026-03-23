@@ -1,7 +1,7 @@
 import os
 try:
     from langchain_community.vectorstores.pgvector import PGVector
-    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_openai import OpenAIEmbeddings
     HAS_ML = True
 except ImportError:
     HAS_ML = False
@@ -18,14 +18,18 @@ class VectorStoreManager:
             self.vectorstore = None
             return
 
-        print("Cargando modelo de Embeddings (Local)...")
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        print("Cargando modelo de Embeddings (OpenAI API)...")
+        openai_key = os.getenv("OPENAI_API_KEY")
+        self.embeddings = OpenAIEmbeddings(
+            openai_api_key=openai_key,
+            model="text-embedding-3-small"
+        )
         
         db_url = os.getenv("DATABASE_URL")
         if db_url and db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
             
-        self.collection_name = "audio_rag_knowledge"
+        self.collection_name = "audio_rag_knowledge_oai"
         
         try:
             self.vectorstore = PGVector(

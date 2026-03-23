@@ -7,16 +7,13 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
         company_name_override = "Busco Fácil"
         project_instructions = (
             f"Proyecto: Busco Fácil. Eres un experto asesor inmobiliario trabajando para {company_name_override}. "
-            "Tu objetivo es ayudar al usuario a encontrar el inmueble perfecto y agendarle una cita para visitarlo. "
-            "ADVERTENCIA CRÍTICA Y ESTRICTA: NO inventes ni asumas la existencia de inmuebles. "
-            "En cada uno de los mensajes del usuario, recibirás un bloque llamado 'RESULTADOS ENCONTRADOS EN BASE DE DATOS' con la cantidad y los datos de las propiedades. "
-            "DEBES basar absolutamente toda tu búsqueda, recomendaciones y respuestas UNICAMENTE en los inmuebles provistos en ese contexto. "
-            "IMPORTANTE: Siempre debes decirle al usuario exactamente cuántas propiedades encontraste (ej: '¡Claro! Encontré 3 propiedades en Ciudad Jardín, te cuento la primera...') y luego descríbelas. "
-            "Si no ves propiedades de ese lugar en el contexto, dile claramente que en este momento no tenemos inmuebles disponibles ahí. "
-            "FILTRO DE UBICACIÓN CRÍTICA: Si el usuario pide propiedades en un sector o barrio específico (Ej. 'Ciudad Jardín', 'Jamundí', 'Sur', 'Oeste'), DEBES revisar detalladamente el campo UBICACIÓN y TÍTULO de los resultados obtenidos. SOLO menciona las propiedades que estrictamente coincidan con ese sector. Si el sistema te trae opciones de otros barrios que no corresponden, DESCÁRTALAS e infórmale al usuario que solo encontraste la cantidad real en ese lugar exacto, o que no hay disponibles. "
-            "MEMORIA CRÍTICA: Recuerda el historial reciente. Si ya le hablaste al usuario de la primera propiedad y te pide 'otra' o 'la segunda', revisa tu contexto actual y ofrécele una DIFERENTE a la que ya describiste. No repitas siempre la misma. "
-            "Menciona siempre al menos una característica clave y el precio de las propiedades. "
-            "REGLA OBLIGATORIA DE CIERRE: Al final de todo, cuando el usuario ya haya encontrado lo que busca o termine su consulta, OBLIGATORIO pídele sus datos de contacto (nombre, correo y demás) para poder enviarle la información detallada por correo o agendar la visita."
+            "Tu objetivo es ayudar al usuario a encontrar el inmueble perfecto y agendar visitas estructuradas. "
+            "ADVERTENCIA CRÍTICA: NO inventes inmuebles. Basa todo en el contexto 'RESULTADOS ENCONTRADOS'. "
+            "Siempre debes decirle al usuario exactamente cuántas propiedades encontraste y describirlas. "
+            "MEMORIA CRÍTICA: Recuerda el historial. No repitas siempre la misma propiedad si te piden otra. "
+            "REGLA OBLIGATORIA DE AGENDAMIENTO: Si el usuario quiere visitar uno o varios inmuebles, ERES EL RESPONSABLE de iterar y preguntarle hasta obtener: 1) Cuáles propiedades quiere visitar. 2) Fecha exacta (Año-Mes-Día) para cada propiedad. 3) Hora exacta (formato 24h) para cada propiedad. "
+            "Si el usuario dice 'las que acabo de ver' o 'esas de la pantalla', confía ciegamente en los IDs de Inmuebles listados en 'CONTEXTO UI ACTUAL' para agendar las citas, pregúntale solo a qué hora y fecha quiere visitarlas. "
+            "UNA VEZ TENGAS LAS FECHAS Y HORAS CONFIRMADAS de los inmuebles, DEBES y ESTÁS OBLIGADO a ejecutar la herramienta 'schedule_visits' pasando los parámetros requeridos. NUNCA finalices sin usar la herramienta si ya confirmaron los días y horas."
         )
     elif project_id == "xkape":
         company_name_override = "Xkape"
@@ -85,16 +82,25 @@ def get_agent_tools(project_id: str) -> list:
             },
             {
                 "type": "function",
-                "name": "schedule_appointment",
-                "description": "Agenda una visita para un usuario interesado en una propiedad. Requiere sus datos de contacto.",
+                "name": "schedule_visits",
+                "description": "Agenda las visitas a los inmuebles. SOLO PUEDES USAR ESTA HERRAMIENTA cuando el cliente ya te haya confirmado la fecha y hora EXACTA de todas las propiedades que quiere visitar. No asumas fechas.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "property_id": {"type": "string", "description": "ID o nombre corto de la propiedad."},
-                        "client_name": {"type": "string", "description": "Nombre del cliente."},
-                        "client_phone": {"type": "string", "description": "Teléfono del cliente."}
+                        "appointments": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "listing_id": {"type": "string", "description": "ID del inmueble a visitar."},
+                                    "date": {"type": "string", "description": "Fecha de la visita en formato estricto YYYY-MM-DD."},
+                                    "time": {"type": "string", "description": "Hora de la visita en formato estricto 24 hrs HH:MM (ej. 14:30)."}
+                                },
+                                "required": ["listing_id", "date", "time"]
+                            }
+                        }
                     },
-                    "required": ["property_id", "client_name"]
+                    "required": ["appointments"]
                 }
             },
             {

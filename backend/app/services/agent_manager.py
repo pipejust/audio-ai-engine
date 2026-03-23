@@ -24,7 +24,7 @@ class AgentManager:
         self.vector_store = VectorStoreManager()
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
 
-    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session") -> dict:
+    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None) -> dict:
         """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
         if not query or not str(query).strip():
             return {"response": "", "status": "ignored"}
@@ -48,6 +48,9 @@ class AgentManager:
             # 1. Cargar las mismas Instrucciones que el Bot de Voz
             dynamic_instructions = get_agent_instructions(project_id, self.bot_name, self.company_name)
             system_prompt = SystemMessage(content=dynamic_instructions)
+            
+            if context_listing_ids:
+                system_prompt.content += f"\n\nCONTEXTO UI ACTUAL: El usuario está viendo las propiedades con IDs {context_listing_ids} en pantalla. Si dice 'quiero visitar estas casas' usa estos IDs como referencia obligatoria."
 
             # 2. Cargar las mismas Tools pero adaptar schema Realtime -> ChatCompletion
             raw_tools = get_agent_tools(project_id)
@@ -80,6 +83,8 @@ class AgentManager:
             # 5. Bucle de Tool Calling
             max_iterations = 5
             all_raw_properties = []
+            scheduled_appointments = []
+            
             for i in range(max_iterations):
                 response = llm.invoke(messages)
                 messages.append(response)
@@ -129,6 +134,8 @@ class AgentManager:
                         result_text = data.get("result_text", "Done.")
                         if "raw_properties" in data:
                             all_raw_properties.extend(data["raw_properties"])
+                        if "appointments" in data:
+                            scheduled_appointments.extend(data["appointments"])
                     except Exception as e:
                         print(f"❌ Tool Error in Text Chat: {e}")
                         result_text = f"Error ejecutando la herramienta: {e}"
@@ -146,11 +153,15 @@ class AgentManager:
             self.sessions[session_id].append(HumanMessage(content=query))
             self.sessions[session_id].append(AIMessage(content=final_text))
             
-            return {
+            result_payload = {
                 "response": final_text,
                 "status": "success",
                 "listings": all_raw_properties
             }
+            if scheduled_appointments:
+                result_payload["appointments"] = scheduled_appointments
+                
+            return result_payload
                 
         except Exception as e:
             print(f"❌ Error en AgentManager:")

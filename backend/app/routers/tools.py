@@ -254,12 +254,13 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."
             
         return {"status": "success", "result_text": result_text, "raw_properties": raw_properties}
-        
-    elif function_name == "schedule_appointment":
-        name = args.get("client_name")
-        pid = args.get("property_id")
-        mock_result = f"Perfect! I have scheduled an appointment for {name} to see {pid}. A confirmation SMS was just sent."
-        return {"status": "success", "result_text": mock_result}
+    elif function_name == "schedule_visits":
+        appointments = args.get("appointments", [])
+        return {
+            "status": "success", 
+            "result_text": "Citas pre-agendadas exitosamente en el sistema. Confírmale al usuario que hemos registrado todo y puedes despedirte amablemente.",
+            "appointments": appointments
+        }
         
     elif function_name == "generate_software_quote":
         name = args.get("client_name", "Cliente")

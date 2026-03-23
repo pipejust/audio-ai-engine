@@ -83,8 +83,7 @@ def get_agent_tools(project_id: str) -> list:
                         "location": {"type": "string", "description": "Ciudad, barrio o sector."},
                         "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc."},
                         "max_price": {"type": "number", "description": "Presupuesto máximo del usuario en formato numérico."},
-                        "bedrooms": {"type": "integer", "description": "Número de habitaciones."},
-                        "limit": {"type": "integer", "description": "Cantidad de propiedades a traer. Pide 30 por defecto siempre para proveer suficiente variedad al cliente y poder filtrar tú por ubicación estricta."}
+                        "bedrooms": {"type": "integer", "description": "Número de habitaciones."}
                     }
                 }
             },

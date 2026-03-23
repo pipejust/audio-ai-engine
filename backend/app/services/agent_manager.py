@@ -65,8 +65,9 @@ class AgentManager:
                     }
                 })
 
-            # Usamos GPT-4o-mini para el Chat de Texto, que soporta perfecto function calling
-            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+            # Usamos Groq con Llama 3.1 8b para latencia ultrabaja (1-3s) y soporte perfecto de Function Calling
+            from langchain_groq import ChatGroq
+            llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.7)
             if chat_tools:
                 llm = llm.bind_tools(chat_tools)
 

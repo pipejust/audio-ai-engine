@@ -185,16 +185,19 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     if isinstance(v, dict) and str(v.get("id_property")) == str(pid):
                         # Extract ALL images
                         images = []
-                        if "main_image" in v and isinstance(v["main_image"], dict) and "url" in v["main_image"]:
-                            images.append(v["main_image"]["url"])
+                        if "main_image" in v and isinstance(v["main_image"], dict):
+                            img_obj = v["main_image"]
+                            best_url = img_obj.get("url_original") or img_obj.get("url_big") or img_obj.get("url")
+                            if best_url:
+                                images.append(best_url)
                             
                         galleries = v.get("galleries", [])
                         if isinstance(galleries, list) and len(galleries) > 0:
                             for k, img_obj in galleries[0].items():
-                                if k.isdigit() and isinstance(img_obj, dict) and "url" in img_obj:
-                                    img_url = img_obj["url"]
-                                    if img_url not in images:
-                                        images.append(img_url)
+                                if k.isdigit() and isinstance(img_obj, dict):
+                                    best_url = img_obj.get("url_original") or img_obj.get("url_big") or img_obj.get("url")
+                                    if best_url and best_url not in images:
+                                        images.append(best_url)
                         
                         # Extract live price
                         sale_price = int(v.get("sale_price", 0) or 0)

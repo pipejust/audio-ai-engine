@@ -165,9 +165,9 @@ class AgentManager:
             return result_payload
                 
         except Exception as e:
-            print(f"❌ Error en AgentManager:")
+            print(f"❌ Error en AgentManager: {e}")
             traceback.print_exc()
             return {
-                "response": "Lo siento, mi motor de texto tuvo un inconveniente.",
+                "response": f"Lo siento, mi motor de texto tuvo un inconveniente: {str(e)}",
                 "status": "error"
             }

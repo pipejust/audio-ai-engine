@@ -82,8 +82,8 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "location": {"type": "string", "description": "Ciudad, barrio o sector."},
                         "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc."},
-                        "max_price": {"type": "number", "description": "Presupuesto máximo del usuario en formato numérico."},
-                        "bedrooms": {"type": "integer", "description": "Número de habitaciones."}
+                        "max_price": {"type": "string", "description": "Presupuesto máximo del usuario numérico (solo números, pero como texto)."},
+                        "bedrooms": {"type": "string", "description": "Número de habitaciones en texto."}
                     }
                 }
             },

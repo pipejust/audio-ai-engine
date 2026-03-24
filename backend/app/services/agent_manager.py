@@ -83,9 +83,9 @@ class AgentManager:
                     }
                 })
 
-            # Usamos Groq con Llama 3.3 70b-versatile para mejor soporte de Function Calling anidado sin error 400
-            from langchain_groq import ChatGroq
-            llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.7)
+            # Volver a OpenAI: gpt-4o-mini para estabilidad ABSOLUTA en Function Calling JSON
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
             if chat_tools:
                 llm = llm.bind_tools(chat_tools)
 

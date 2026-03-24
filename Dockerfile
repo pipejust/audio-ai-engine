@@ -29,7 +29,7 @@ RUN mkdir -p /app/backend/uploads
 EXPOSE 8000
 
 # Variable de entorno de puerto de Render u otro
-ENV PORT=8000
+ENV PORT=10000
 # Bandera para saber que estamos en Render y no Vercel (ya no usaremos /tmp restringido por defecto)
 ENV RENDER=1
 
@@ -37,4 +37,4 @@ ENV RENDER=1
 ENV PYTHONPATH=/app/backend
 
 # Comando de inicio
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"

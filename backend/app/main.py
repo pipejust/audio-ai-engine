@@ -126,6 +126,8 @@ class ChatRequest(BaseModel):
     session_id: str = "default_session"
     project_id: str = "default"
     context_listing_ids: list[str] = []
+    client_name: str = ""
+    client_email: str = ""
 
 @app.get("/")
 def read_root():
@@ -142,7 +144,9 @@ def chat_with_agent(request: ChatRequest):
         request.query, 
         request.project_id, 
         request.session_id,
-        request.context_listing_ids
+        request.context_listing_ids,
+        request.client_name,
+        request.client_email
     )
     return result
 

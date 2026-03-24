@@ -260,6 +260,15 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."
             
         return {"status": "success", "result_text": result_text, "raw_properties": raw_properties}
+    elif function_name == "open_property_details":
+        listing_id = args.get("listing_id")
+        return {
+            "status": "success",
+            "result_text": "Dile amablemente al usuario: '¡Claro! Aquí tienes los detalles e imágenes de la propiedad en pantalla.'",
+            "action": "view_details",
+            "listing_id": listing_id
+        }
+        
     elif function_name == "schedule_visits":
         client_name = args.get("client_name", "Cliente Sin Nombre")
         client_email = args.get("client_email", "ventas@buscofacil.com")

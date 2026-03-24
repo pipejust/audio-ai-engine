@@ -24,7 +24,7 @@ class AgentManager:
         self.vector_store = VectorStoreManager()
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
 
-    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None) -> dict:
+    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "") -> dict:
         """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
         if not query or not str(query).strip():
             return {"response": "", "status": "ignored"}
@@ -49,6 +49,9 @@ class AgentManager:
             dynamic_instructions = get_agent_instructions(project_id, self.bot_name, self.company_name)
             system_prompt = SystemMessage(content=dynamic_instructions)
             
+            if client_name or client_email:
+                system_prompt.content += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre o correo al usuario para agendar; usa los datos del sistema."
+
             if context_listing_ids:
                 try:
                     raw_docs = []
@@ -100,6 +103,8 @@ class AgentManager:
             max_iterations = 5
             all_raw_properties = []
             scheduled_appointments = []
+            ui_action = None
+            ui_listing_id = None
             
             for i in range(max_iterations):
                 response = llm.invoke(messages)
@@ -152,6 +157,9 @@ class AgentManager:
                             all_raw_properties.extend(data["raw_properties"])
                         if "appointments" in data:
                             scheduled_appointments.extend(data["appointments"])
+                        if "action" in data and data["action"] == "view_details":
+                            ui_action = "view_details"
+                            ui_listing_id = data.get("listing_id")
                     except Exception as e:
                         print(f"❌ Tool Error in Text Chat: {e}")
                         result_text = f"Error ejecutando la herramienta: {e}"
@@ -174,6 +182,10 @@ class AgentManager:
                 "status": "success",
                 "listings": all_raw_properties
             }
+            if ui_action:
+                result_payload["action"] = ui_action
+                result_payload["listing_id"] = ui_listing_id
+                
             if scheduled_appointments:
                 result_payload["appointments"] = scheduled_appointments
                 

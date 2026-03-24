@@ -125,6 +125,7 @@ class ChatRequest(BaseModel):
     query: str
     session_id: str = "default_session"
     project_id: str = "default"
+    context_listing_ids: list[str] = []
 
 @app.get("/")
 def read_root():
@@ -137,7 +138,12 @@ def chat_with_agent(request: ChatRequest):
     decidirá si necesita consultar la base vectorial, raspar una web, 
     o simplemente responder basándose en su conocimiento.
     """
-    result = agent_manager.process_query(request.query, request.project_id, request.session_id)
+    result = agent_manager.process_query(
+        request.query, 
+        request.project_id, 
+        request.session_id,
+        request.context_listing_ids
+    )
     return result
 
 # Configuración del Gateway de Voz Full Duplex

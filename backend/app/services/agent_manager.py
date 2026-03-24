@@ -53,6 +53,10 @@ class AgentManager:
                 system_prompt.content += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
 
             if context_listing_ids:
+                # Inyección instantánea (Cero latencia) del orden visual exacto
+                mapping_text = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(context_listing_ids)])
+                system_prompt.content += f"\n\n[MAPEO VISUAL EN PANTALLA]:\nEste es el orden cronológico exacto de las casas que el cliente está viendo ahora mismo:\n{mapping_text}\n(Usa estrictamente estos IDs referenciales si el usuario te pide ver 'la primera', 'la 3', 'esa última', etc.)."
+                
                 try:
                     raw_docs = []
                     # Fetch perfect semantic data directly from PGVector. LIMIT to 2 items max to reduce latency on simple queries.

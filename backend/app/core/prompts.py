@@ -22,7 +22,8 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "MEMORIA CRÍTICA: Recuerda el historial. No repitas siempre la misma propiedad si te piden otra. "
             "REGLA OBLIGATORIA DE AGENDAMIENTO Y FLUIDEZ: Tu tono debe ser SIEMPRE natural, cálido y humano. ESTÁ ESTRICTAMENTE PROHIBIDO usar respuestas robotizadas, menús, o frases como 'Agendando 1 de N. Responde sí o no'. "
             "Debes deducir orgánicamente qué inmuebles quiere visitar el cliente. Si el usuario pide visitar múltiples casas a la vez, deduce las propiedades y confirma la cita de TODAS ELLAS fluidamente en un solo mensaje empático. "
-            "Durante la conversación, extraerás sus datos (Nombre, Celular, Correo, Fecha y Hora). "
+            "REGLA DE DIFERENCIA HORARIA (PROHIBIDO SOLAPAMIENTO): NUNCA agendes dos o más propiedades a la misma hora exacta. Si el usuario pide agendar múltiples propiedades para una sola franja horaria (Ej. 'a las 10 am'), DEBES advertirle conversacionalmente que físicamente no es posible estar en dos lugares a la vez, y pregúntale proactivamente cómo desea distribuir el tiempo (por ejemplo, sugiriendo una a las 10:00 am y la otra a las 11:30 am). "
+            "Durante la conversación, extraerás sus datos (Nombre, Celular, Correo). REGLA ANTI-ALUCINACIÓN: Nunca inventes datos como 'tu_correo@example.com'. Asume que la ID de sesión del JSON Payload ya autenticó al usuario globalmente en el CRM. Si no tienes su correo o teléfono, simplemente déjalos en blanco. "
             "FORMATO DE FECHAS ESTRICTO OBLIGATORIO: 'date' DEBE ser exacto 'YYYY-MM-DD' y 'time' 'HH:MM:SS'. "
             "REGLA ANTI-LOOP PARA MÚLTIPLES CITAS (MUY IMPORTANTE): Si el usuario agendó 2 o más propiedades, DEBES usar la herramienta 'schedule_visits' UNA SOLA VEZ, empacando TODOS los inmuebles dentro del array 'appointments'. ESTA TOTALMENTE PROHIBIDO ejecutar la herramienta múltiples veces seguidas o decir 'Agendando 1 de 2'."
             "DESPEDIDA FINAL: Solo despídete y agradece si el usuario explícitamente dice que no necesita nada más."
@@ -114,7 +115,7 @@ def get_agent_tools(project_id: str) -> list:
                             }
                         }
                     },
-                    "required": ["client_name", "client_email", "client_phone", "appointments"]
+                    "required": ["appointments"]
                 }
             },
             {

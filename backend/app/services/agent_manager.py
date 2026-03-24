@@ -55,8 +55,8 @@ class AgentManager:
             if context_listing_ids:
                 try:
                     raw_docs = []
-                    # Fetch perfect semantic data directly from PGVector for the properties on screen
-                    for pid in context_listing_ids:
+                    # Fetch perfect semantic data directly from PGVector. LIMIT to 2 items max to reduce latency on simple queries.
+                    for pid in context_listing_ids[:2]:
                         docs_for_id = self.vector_store.vectorstore.similarity_search(
                             "propiedad", 
                             k=1, 
@@ -100,7 +100,7 @@ class AgentManager:
             messages = [system_prompt] + history + [HumanMessage(content=query)]
             
             # 5. Bucle de Tool Calling
-            max_iterations = 5
+            max_iterations = 3
             all_raw_properties = []
             scheduled_appointments = []
             ui_action = None
@@ -187,7 +187,17 @@ class AgentManager:
                 result_payload["listing_id"] = ui_listing_id
                 
             if scheduled_appointments:
-                result_payload["appointments"] = scheduled_appointments
+                # Deduplicar arreglos en Python para evitar doble conteo si el LLM repite JSON items
+                unique_appts = []
+                seen_appts = set()
+                for appt in scheduled_appointments:
+                    # Crear hash unico basado en ID y fecha
+                    unique_key = f"{appt.get('listing_id')}_{appt.get('date')}_{appt.get('time')}"
+                    if unique_key not in seen_appts:
+                        seen_appts.add(unique_key)
+                        unique_appts.append(appt)
+                        
+                result_payload["appointments"] = unique_appts
                 
             return result_payload
                 

@@ -50,7 +50,7 @@ class AgentManager:
             system_prompt = SystemMessage(content=dynamic_instructions)
             
             if client_name or client_email:
-                system_prompt.content += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre o correo al usuario para agendar; usa los datos del sistema."
+                system_prompt.content += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
 
             if context_listing_ids:
                 try:

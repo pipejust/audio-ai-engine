@@ -83,9 +83,9 @@ class AgentManager:
                     }
                 })
 
-            # Usamos Groq con Llama 3.1 8b para latencia ultrabaja (1-3s) y soporte perfecto de Function Calling
+            # Usamos Groq con Llama 3.3 70b-versatile para mejor soporte de Function Calling anidado sin error 400
             from langchain_groq import ChatGroq
-            llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.7)
+            llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.7)
             if chat_tools:
                 llm = llm.bind_tools(chat_tools)
 

@@ -67,10 +67,10 @@ class VectorStoreManager:
         filter_dict = {"project_id": project_id}
             
         search_kwargs = {
-            "k": k, 
-            "fetch_k": k * 4, # Fetches more documents before filtering with MMR para dar mucha más variedad
+            "k": k,
             "filter": filter_dict
         }
-        # search_type="mmr" ensures we get diverse results instead of just the top closest ones
-        return self.vectorstore.as_retriever(search_type="mmr", search_kwargs=search_kwargs)
+        # search_type="similarity" delega el calculo matemático íntegramente a BD PGVector, 
+        # eliminando el cuello de botella de CPU y consumo de RAM de MMR en Python.
+        return self.vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
 

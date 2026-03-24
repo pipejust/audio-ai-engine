@@ -287,6 +287,30 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         target_table = os.getenv("SUPABASE_APPOINTMENTS_TABLE", "appointments_system")
         inserted_appointments = []
         
+        # Obtener vendedor de respaldo dinámico desde api_integrations
+        default_vendedor_nombre = "Busco Fácil IA"
+        default_vendedor_email = "ventas@buscofacil.com"
+        default_vendedor_celular = "+57 300 000 0000"
+        
+        if supabase_client:
+            try:
+                res_api = supabase_client.table("api_integrations").select("configuracion").eq("activa", True).limit(1).execute()
+                if res_api.data and len(res_api.data) > 0:
+                    config = res_api.data[0].get("configuracion", {})
+                    if isinstance(config, dict):
+                        seller_info = config.get("seller_info", {})
+                        if isinstance(seller_info, dict) and seller_info:
+                            default_vendedor_nombre = seller_info.get("name", default_vendedor_nombre)
+                            default_vendedor_email = seller_info.get("email", default_vendedor_email)
+                            default_vendedor_celular = seller_info.get("phone", default_vendedor_celular)
+                        else:
+                            # Fallback to root configuracion
+                            default_vendedor_email = config.get("correo", default_vendedor_email)
+                            default_vendedor_nombre = config.get("nombre_asesor", default_vendedor_nombre)
+                            default_vendedor_celular = config.get("telefono_asesor", default_vendedor_celular)
+            except Exception as e:
+                print(f"Error fetching api_integrations fallback seller: {e}")
+        
         for appt in appointments:
             pid = appt.get("listing_id")
             
@@ -305,9 +329,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             wasi_garages = 0
             wasi_age = "0"
             wasi_stratum = "0"
-            vendedor_nombre = "Busco Fácil IA"
-            vendedor_email = "ventas@buscofacil.com"
-            vendedor_celular = "+57 300 000 0000"
+            vendedor_nombre = default_vendedor_nombre
+            vendedor_email = default_vendedor_email
+            vendedor_celular = default_vendedor_celular
             
             # Hydrate via WASI POST hook
             try:

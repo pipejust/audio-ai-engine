@@ -168,6 +168,15 @@ async def websocket_endpoint(websocket: WebSocket):
     project_id = websocket.query_params.get("project_id", "default")
     await voice_gateway.process_audio_stream(websocket, project_id)
 
+@app.websocket("/ws/realtime/{project_id}")
+async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
+    """
+    Endpoint de WebSocket alias (Legacy) para mantener compatibilidad 
+    con frontends cacheados en Vercel que apuntan a la ruta antigua.
+    """
+    await voice_gateway.connect(websocket)
+    await voice_gateway.process_audio_stream(websocket, project_id)
+
 @app.get("/api/test-openai")
 async def test_openai_api():
     """Diagnóstico temporal para probar OpenAI Realtime API desde Render."""

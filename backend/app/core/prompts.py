@@ -20,9 +20,9 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "ADVERTENCIA CRÍTICA: NO inventes inmuebles. Basa todo en el contexto 'RESULTADOS ENCONTRADOS'. "
             "Siempre debes decirle al usuario exactamente cuántas propiedades encontraste y describirlas. "
             "MEMORIA CRÍTICA: Recuerda el historial. No repitas siempre la misma propiedad si te piden otra. "
-            "REGLA OBLIGATORIA DE AGENDAMIENTO: Si el usuario quiere visitar uno o varios inmuebles, ERES EL RESPONSABLE de iterar y preguntarle hasta obtener: 1) Cuáles propiedades quiere visitar. 2) Fecha exacta (Año-Mes-Día) para cada propiedad. 3) Hora exacta (formato 24h) para cada propiedad. "
-            "Si el usuario dice 'las que acabo de ver' o 'esas de la pantalla', confía ciegamente en los IDs de Inmuebles listados en 'CONTEXTO UI ACTUAL' para agendar las citas, pregúntale solo a qué hora y fecha quiere visitarlas. "
-            "UNA VEZ TENGAS LAS FECHAS Y HORAS CONFIRMADAS de los inmuebles, DEBES y ESTÁS OBLIGADO a ejecutar la herramienta 'schedule_visits' pasando los parámetros requeridos. NUNCA finalices sin usar la herramienta si ya confirmaron los días y horas. "
+            "REGLA OBLIGATORIA DE AGENDAMIENTO: Si el usuario quiere visitar uno o varios inmuebles, ERES EL RESPONSABLE de iterar y preguntarle hasta obtener todos estos datos OBLIGATORIAMENTE: 1) Cuáles propiedades quiere visitar. 2) Fecha exacta (Año-Mes-Día). 3) Hora exacta (formato 24h). 4) Su nombre completo. 5) Su correo electrónico. 6) Su teléfono celular. "
+            "Si el usuario dice 'las que acabo de ver' o 'esas de la pantalla', confía ciegamente en los IDs de Inmuebles listados en 'CONTEXTO UI ACTUAL' para agendar las citas, pregúntale solo a qué hora y fecha quiere visitarlas, y no olvides pedirle sus datos personales (Nombre, Correo, Celular). "
+            "UNA VEZ TENGAS TODOS LOS 6 PUNTOS (Fechas, Horas y Datos Personales) de los inmuebles, DEBES y ESTÁS OBLIGADO a ejecutar la herramienta 'schedule_visits' pasando los parámetros requeridos. NUNCA finalices sin usar la herramienta si ya confirmaron los datos. "
             "CIERRE DE INTENCIÓN DE AGENDAMIENTO: Cuando confirmes que recibiste exitosamente los datos del usuario para una cita y proceses la herramienta, NUNCA te despidas cerrando la interacción. Siempre debes mantener la retención del cliente preguntando de forma amable: '¿Hay algo más en lo que te pueda ayudar hoy?' o '¿Deseas buscar otra propiedad?'. "
             "DESPEDIDA FINAL: Solo despídete y agradece si el usuario explícitamente dice que no necesita nada más."
         )
@@ -97,6 +97,9 @@ def get_agent_tools(project_id: str) -> list:
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "client_name": {"type": "string", "description": "Nombre completo del usuario."},
+                        "client_email": {"type": "string", "description": "Correo electrónico del usuario."},
+                        "client_phone": {"type": "string", "description": "Teléfono celular del usuario."},
                         "appointments": {
                             "type": "array",
                             "items": {
@@ -110,7 +113,7 @@ def get_agent_tools(project_id: str) -> list:
                             }
                         }
                     },
-                    "required": ["appointments"]
+                    "required": ["client_name", "client_email", "client_phone", "appointments"]
                 }
             },
             {

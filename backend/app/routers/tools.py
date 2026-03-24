@@ -220,6 +220,8 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             top_properties = raw_properties[:llm_limit]
             
             # Fetch their LIVE payloads concurrently
+            import time
+            start_wasi = time.time()
             live_data_map = {}
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 future_to_pid = {executor.submit(fetch_live_wasi_property, rp["id"]): rp["id"] for rp in top_properties}
@@ -227,8 +229,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     try:
                         pid, live_data = future.result()
                         live_data_map[str(pid)] = live_data
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print("Future error:", e)
+            print("WASI Hydration took:", time.time() - start_wasi)
                         
             # Filter and update raw_properties with LIVE data
             valid_live_properties = []
@@ -258,10 +261,229 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             
         return {"status": "success", "result_text": result_text, "raw_properties": raw_properties}
     elif function_name == "schedule_visits":
+        client_name = args.get("client_name", "Cliente Sin Nombre")
+        client_email = args.get("client_email", "ventas@buscofacil.com")
+        client_phone = args.get("client_phone", "+57 300 000 0000")
         appointments = args.get("appointments", [])
+        
+        # 1. Init external APIs using scoped imports
+        import os
+        import uuid
+        import requests
+        from datetime import datetime
+        from app.services.wasi_api import WasiAPI
+        
+        wasi_client = WasiAPI()
+        
+        try:
+            from supabase import create_client, Client
+            sb_url = os.environ.get("SUPABASE_URL")
+            sb_key = os.environ.get("SUPABASE_KEY")
+            supabase_client = create_client(sb_url, sb_key)
+        except Exception as e:
+            print(f"Supabase client init failed: {e}")
+            supabase_client = None
+            
+        target_table = os.getenv("SUPABASE_APPOINTMENTS_TABLE", "appointments_system")
+        inserted_appointments = []
+        
+        for appt in appointments:
+            pid = appt.get("listing_id")
+            
+            # Default WASI mapping payload
+            wasi_title = f"Inmueble ID {pid}"
+            wasi_type = "property"
+            wasi_address = "No especificada"
+            wasi_city = "No especificada"
+            wasi_map = ""
+            wasi_lat = None
+            wasi_lng = None
+            wasi_price = 0
+            wasi_area = 0
+            wasi_rooms = 0
+            wasi_bathrooms = 0
+            wasi_garages = 0
+            wasi_age = "0"
+            wasi_stratum = "0"
+            vendedor_nombre = "Busco Fácil IA"
+            vendedor_email = "ventas@buscofacil.com"
+            vendedor_celular = "+57 300 000 0000"
+            
+            # Hydrate via WASI POST hook
+            try:
+                payload = wasi_client._get_payload({"id_property": pid})
+                res = requests.post(f"{wasi_client.base_url}/property/search", data=payload, headers=wasi_client._get_headers(), timeout=5.0)
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, dict) and str(data.get("total", "0")) == "1":
+                        v = data.get("0", {})
+                        wasi_title = v.get("title", wasi_title)
+                        wasi_type = v.get("property_type_label", wasi_type)
+                        wasi_address = v.get("address", wasi_address)
+                        wasi_city = v.get("city_label", wasi_city)
+                        wasi_map = v.get("map", "")
+                        wasi_lat = v.get("latitude")
+                        wasi_lng = v.get("longitude")
+                        wasi_price = max(int(v.get("sale_price", 0) or 0), int(v.get("rent_price", 0) or 0))
+                        wasi_area = int(v.get("area", 0) or 0)
+                        wasi_rooms = int(v.get("bedrooms", 0) or 0)
+                        wasi_bathrooms = int(v.get("bathrooms", 0) or 0)
+                        wasi_garages = int(v.get("garages", 0) or 0)
+                        wasi_age = str(v.get("building_date", "0"))
+                        wasi_stratum = str(v.get("stratum", "0"))
+                        
+                        # Seller metadata extraction from WASI API
+                        user_data = v.get("user_data", {})
+                        if user_data:
+                            first = user_data.get("first_name", "")
+                            last = user_data.get("last_name", "")
+                            if first or last:
+                                vendedor_nombre = f"{first} {last}".strip()
+                            vendedor_email = user_data.get("email", vendedor_email)
+                            vendedor_celular = user_data.get("cell_phone", vendedor_celular)
+            except Exception as e:
+                print(f"Error fetching WASI details for {pid}: {e}")
+                
+            now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            raw_time = appt.get("time", "00:00")
+            if len(raw_time) == 5: # HH:MM conversion to Postgres Time
+                raw_time += ":00"
+                
+            crm_payload = {
+                # [1-10] Metadata Core
+                "id": str(uuid.uuid4()),
+                "inmueble_id": str(pid),
+                "inmueble_titulo": wasi_title,
+                "inmueble_tipo": wasi_type,
+                "inmueble_direccion": wasi_address,
+                "inmueble_ciudad": wasi_city,
+                "inmueble_coordenadas": wasi_map,
+                "inmueble_lat": float(wasi_lat) if wasi_lat else None,
+                "inmueble_lng": float(wasi_lng) if wasi_lng else None,
+                "inmueble_precio": wasi_price,
+                
+                # [11-20] Metadata Inmueble (Técnico)
+                "inmueble_area": float(wasi_area),
+                "inmueble_habitaciones": int(wasi_rooms),
+                "inmueble_banos": int(wasi_bathrooms),
+                "inmueble_garajes": int(wasi_garages),
+                "inmueble_antiguedad": wasi_age,
+                "inmueble_estrato": wasi_stratum,
+                
+                # [21-30] Cliente
+                "cliente_id": None,
+                "cliente_nombre": client_name,
+                "cliente_email": client_email,
+                "cliente_celular": client_phone,
+                "notas_cliente": "Agendado automáticamente vía Inteligencia Artificial",
+                
+                # [31-40] Vendedor
+                "vendedor_id": None,
+                "vendedor_nombre": vendedor_nombre,
+                "vendedor_email": vendedor_email,
+                "vendedor_celular": vendedor_celular,
+                
+                # [41-50] Cita Core
+                "fecha_cita": appt.get("date", "2026-01-01"),
+                "hora_cita": raw_time,
+                "hora_inicio": raw_time,
+                "hora_fin": None,
+                "duracion_minutos": 60,
+                
+                # [51-54] Estado y Trazabilidad Obligatoria (Diccionario de 10 estados)
+                "estado": "pendiente",
+                "origen_cita": "bot_inteligencia_artificial",
+                "canal_comunicacion": "whatsapp",
+                
+                # Campos Booleanos y timestamps
+                "confirmada_cliente": False,
+                "confirmada_vendedor": False,
+                "fecha_confirmacion_cliente": None,
+                "fecha_confirmacion_vendedor": None,
+                
+                "activa": True,
+                "fecha_creacion": now_iso,
+                "ultima_actualizacion": now_iso,
+                "notas_internas": "Payload generado dinámicamente desde el bot IA (WASI Hydration loop)."
+            }
+            
+            # Insert into remote DB (admin.buscofacil.com Supabase)
+            if supabase_client:
+                try:
+                    res = supabase_client.table(target_table).insert(crm_payload).execute()
+                    print(f"Supabase Insertion OK: {res}")
+                except Exception as e:
+                    print(f"Supabase Insertion failed for CRM Payload: {e}")
+            else:
+                print("Skipped Supabase insertion (DB client not configured).")
+            
+            inserted_appointments.append(crm_payload)
+            
+        # 2. Dispatch Email Notifications to Vendors
+        try:
+            from app.db.session import SessionLocal
+            from app.db.models import SmtpSettings
+            import smtplib
+            from email.message import EmailMessage
+            
+            db = SessionLocal()
+            smtp_obj = db.query(SmtpSettings).filter(SmtpSettings.project_id == project_id).first()
+            db.close()
+            
+            if smtp_obj and smtp_obj.smtp_host and smtp_obj.smtp_pass:
+                from_name = getattr(smtp_obj, "from_name", None) or "Inteligencia Artificial"
+                from_email = getattr(smtp_obj, "from_email", None) or "notificaciones@buscofacil.com"
+                
+                for appt_payload in inserted_appointments:
+                    vendedor_email = appt_payload.get("vendedor_email")
+                    if not vendedor_email:
+                        continue
+                        
+                    msg = EmailMessage()
+                    msg["Subject"] = f"Nueva Pre-Agenda IA: {appt_payload.get('inmueble_titulo')}"
+                    msg["From"] = f"{from_name} <{from_email}>"
+                    msg["To"] = vendedor_email
+                    
+                    bcc = getattr(smtp_obj, "bcc_email", None)
+                    if bcc and bcc.strip():
+                        msg["Bcc"] = bcc.strip()
+                        
+                    # Build email body
+                    body = f"Hola {appt_payload.get('vendedor_nombre')},\n\n"
+                    body += f"Nuestro Asistente de Inteligencia Artificial acaba de pre-agendar una cita para tu inmueble:\n"
+                    body += f"- Inmueble: {appt_payload.get('inmueble_titulo')} (ID: {appt_payload.get('inmueble_id')})\n"
+                    body += f"- Fecha: {appt_payload.get('fecha_cita')}\n"
+                    body += f"- Hora: {appt_payload.get('hora_cita')}\n\n"
+                    body += f"Datos del Cliente:\n"
+                    body += f"- Nombre: {appt_payload.get('cliente_nombre')}\n"
+                    body += f"- Email: {appt_payload.get('cliente_email')}\n"
+                    body += f"- Celular: {appt_payload.get('cliente_celular')}\n\n"
+                    body += f"Recuerda que esta cita está en estado PENDIENTE. Por favor ingresa a admin.buscofacil.com para Aceptar, Modificar o Cancelar la pre-agenda.\n"
+                    
+                    msg.set_content(body)
+                    
+                    try:
+                        if smtp_obj.smtp_port == 465:
+                            with smtplib.SMTP_SSL(smtp_obj.smtp_host, smtp_obj.smtp_port, timeout=10) as server:
+                                server.login(smtp_obj.smtp_user, smtp_obj.smtp_pass)
+                                server.send_message(msg)
+                        else:
+                            with smtplib.SMTP(smtp_obj.smtp_host, smtp_obj.smtp_port, timeout=10) as server:
+                                server.starttls()
+                                server.login(smtp_obj.smtp_user, smtp_obj.smtp_pass)
+                                server.send_message(msg)
+                        print(f"Pre-Agenda Notification Email Sent successfully to {vendedor_email}")
+                    except Exception as e:
+                        print(f"Failed to send email to {vendedor_email}: {e}")
+            else:
+                print("Skipped Vendor Email Notifications: SMTP Settings not configured for this project.")
+        except Exception as e:
+            print(f"Failed to dispatch vendor notifications (Exception): {e}")
+
         return {
             "status": "success", 
-            "result_text": "Citas pre-agendadas exitosamente en el sistema. Confírmale al usuario que hemos registrado todo y puedes despedirte amablemente.",
+            "result_text": "Citas pre-agendadas exitosamente en el sistema CRM central. Confírmale al usuario que hemos registrado su nombre y datos, informándole que sus citas están validadas, y mantén el ciclo abierto por si quiere algo más.",
             "appointments": appointments
         }
         

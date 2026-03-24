@@ -50,7 +50,22 @@ class AgentManager:
             system_prompt = SystemMessage(content=dynamic_instructions)
             
             if context_listing_ids:
-                system_prompt.content += f"\n\nCONTEXTO UI ACTUAL: El usuario está viendo las propiedades con IDs {context_listing_ids} en pantalla. Si dice 'quiero visitar estas casas' usa estos IDs como referencia obligatoria."
+                try:
+                    raw_docs = []
+                    # Fetch perfect semantic data directly from PGVector for the properties on screen
+                    for pid in context_listing_ids:
+                        docs_for_id = self.vector_store.vectorstore.similarity_search(
+                            "propiedad", 
+                            k=1, 
+                            filter={"property_id": str(pid)}
+                        )
+                        raw_docs.extend(docs_for_id)
+                        
+                    if raw_docs:
+                        context_text = "\n".join([f"ID[{d.metadata.get('property_id')}]: {d.page_content}" for d in raw_docs])
+                        system_prompt.content += f"\n\nCONTEXTO VISUAL ACTUAL (Viendo en pantalla):\n{context_text}\n(EL USUARIO TE ESTÁ PREGUNTANDO DIRECTAMENTE SOBRE ESTAS PROPIEDADES. NO uses la herramienta 'search_properties' para buscar esto, confía en esta información para responder orgánicamente sus dudas)."
+                except Exception as e:
+                    print(f"Error cargando contexto visual de vector_store: {e}")
 
             # 2. Cargar las mismas Tools pero adaptar schema Realtime -> ChatCompletion
             raw_tools = get_agent_tools(project_id)

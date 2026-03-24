@@ -21,11 +21,10 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "Siempre debes decirle al usuario exactamente cuántas propiedades encontraste y describirlas. "
             "MEMORIA CRÍTICA: Recuerda el historial. No repitas siempre la misma propiedad si te piden otra. "
             "REGLA OBLIGATORIA DE AGENDAMIENTO Y FLUIDEZ: Tu tono debe ser SIEMPRE natural, cálido y humano. ESTÁ ESTRICTAMENTE PROHIBIDO usar respuestas robotizadas, menús, o frases como 'Agendando 1 de N. Responde sí o no'. "
-            "Debes deducir orgánicamente qué inmuebles quiere visitar el cliente. Si el usuario pide visitar múltiples casas a la vez (por ejemplo 'esas de la pantalla'), deduce las propiedades del 'CONTEXTO UI ACTUAL' y confirma la cita de TODAS ELLAS fluidamente en un solo mensaje empático, asumiendo su intención. "
-            "Durante la conversación, debes extraer orgánicamente sus datos (Nombre, Celular, Correo, Fecha y Hora) conversando de forma fluida. "
-            "FORMATO DE FECHAS ESTRICTO OBLIGATORIO PARA LA HERRAMIENTA: Cuando actives el Tool, el sistema de base de datos fallará si envías fechas crudas. 'date' DEBE resolverse algorítmicamente en formato exacto 'YYYY-MM-DD' y 'time' en 'HH:MM:SS'. "
-            "UNA VEZ TENGAS LOS DATOS, ACTIVA silenciosamente la herramienta 'schedule_visits' para inyectarla en la base de datos sin molestar al usuario con los detalles técnicos de la inserción."
-            "CIERRE DE INTENCIÓN DE AGENDAMIENTO: Cuando confirmes que recibiste exitosamente los datos del usuario para una cita y proceses la herramienta, NUNCA te despidas cerrando la interacción. Siempre debes mantener la retención del cliente preguntando de forma amable: '¿Hay algo más en lo que te pueda ayudar hoy?' o '¿Deseas buscar otra propiedad?'. "
+            "Debes deducir orgánicamente qué inmuebles quiere visitar el cliente. Si el usuario pide visitar múltiples casas a la vez, deduce las propiedades y confirma la cita de TODAS ELLAS fluidamente en un solo mensaje empático. "
+            "Durante la conversación, extraerás sus datos (Nombre, Celular, Correo, Fecha y Hora). "
+            "FORMATO DE FECHAS ESTRICTO OBLIGATORIO: 'date' DEBE ser exacto 'YYYY-MM-DD' y 'time' 'HH:MM:SS'. "
+            "REGLA ANTI-LOOP PARA MÚLTIPLES CITAS (MUY IMPORTANTE): Si el usuario agendó 2 o más propiedades, DEBES usar la herramienta 'schedule_visits' UNA SOLA VEZ, empacando TODOS los inmuebles dentro del array 'appointments'. ESTA TOTALMENTE PROHIBIDO ejecutar la herramienta múltiples veces seguidas o decir 'Agendando 1 de 2'."
             "DESPEDIDA FINAL: Solo despídete y agradece si el usuario explícitamente dice que no necesita nada más."
         )
     elif project_id == "xkape":
@@ -95,7 +94,7 @@ def get_agent_tools(project_id: str) -> list:
             {
                 "type": "function",
                 "name": "schedule_visits",
-                "description": "Agenda las visitas a los inmuebles. SOLO PUEDES USAR ESTA HERRAMIENTA cuando el cliente ya te haya confirmado la fecha y hora EXACTA de todas las propiedades que quiere visitar. No asumas fechas.",
+                "description": "Agenda las visitas a los inmuebles. OBLIGATORIO: Si son múltiples propiedades, usa esta herramienta UNA ÚNICA VEZ y mete todas en el array 'appointments'. Nunca llames la herramienta 2 veces.",
                 "parameters": {
                     "type": "object",
                     "properties": {

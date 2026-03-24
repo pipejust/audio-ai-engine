@@ -37,17 +37,18 @@ class VoiceGatewayManager:
         except Exception as e:
             print(f"Error enviando JSON por WS: {e}")
 
-    async def process_audio_stream(self, websocket: WebSocket, authenticated_project_id: str = None):
+    async def process_audio_stream(self, websocket: WebSocket, authenticated_project_id: str = None, client_name: str = "", client_email: str = "", context_listing_ids: list[str] = None):
         """Enruta al bucle adecuado según el modo seleccionado."""
         project_id = authenticated_project_id or websocket.query_params.get("project_id", "default")
         voice_id = websocket.query_params.get("voice", "alloy")
+        if context_listing_ids is None: context_listing_ids = []
         
         if self.mode == "OPENAI_REALTIME" and self.openai_realtime_manager:
-            await self.openai_realtime_manager.handle_connection(websocket, project_id, voice_id)
+            await self.openai_realtime_manager.handle_connection(websocket, project_id, voice_id, client_name, client_email, context_listing_ids)
         else:
-            await self._process_groq_pipeline(websocket, project_id)
+            await self._process_groq_pipeline(websocket, project_id, client_name, client_email, context_listing_ids)
             
-    async def _process_groq_pipeline(self, websocket: WebSocket, project_id: str):
+    async def _process_groq_pipeline(self, websocket: WebSocket, project_id: str, client_name: str = "", client_email: str = "", context_listing_ids: list[str] = None):
         """Bucle original de Groq + Agent + ElevenLabs"""
         try:
             # Saludo Proactivo Inmediato
@@ -84,7 +85,7 @@ class VoiceGatewayManager:
                 if self.current_task and not self.current_task.done():
                     self.current_task.cancel()
                     
-                self.current_task = asyncio.create_task(self._process_single_turn(websocket, project_id, audio_bytes))
+                self.current_task = asyncio.create_task(self._process_single_turn(websocket, project_id, audio_bytes, client_name, client_email, context_listing_ids))
 
         except WebSocketDisconnect:
             self.disconnect(websocket)
@@ -92,7 +93,7 @@ class VoiceGatewayManager:
             print(f"❌ Error en flujo WebSocket Groq Pipeline: {e}")
             self.disconnect(websocket)
 
-    async def _process_single_turn(self, websocket: WebSocket, project_id: str, audio_bytes: bytes):
+    async def _process_single_turn(self, websocket: WebSocket, project_id: str, audio_bytes: bytes, client_name: str, client_email: str, context_listing_ids: list[str]):
         try:
             print(f"🎙️ [Opción A] Procesando {len(audio_bytes)} bytes de audio.")
             await self._send_json(websocket, {"status": "transcribing"})
@@ -120,7 +121,15 @@ class VoiceGatewayManager:
             # Validar de nuevo si fuimos cancelados antes de la llamada pesada al LLM
             await asyncio.sleep(0)
             
-            agent_result = await asyncio.to_thread(self.agent_manager.process_query, transcription, project_id)
+            agent_result = await asyncio.to_thread(
+                self.agent_manager.process_query, 
+                transcription, 
+                project_id, 
+                "default_session", 
+                context_listing_ids, 
+                client_name, 
+                client_email
+            )
             text_response = agent_result.get("response", "Error procesando")
             
             

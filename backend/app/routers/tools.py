@@ -270,10 +270,13 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         }
         
     elif function_name == "schedule_visits":
-        client_name = args.get("client_name", "Cliente Sin Nombre")
-        client_email = args.get("client_email", "ventas@buscofacil.com")
+        client_name = args.get("client_name", "")
+        client_email = args.get("client_email", "")
         client_phone = args.get("client_phone", "+57 300 000 0000")
         appointments = args.get("appointments", [])
+        
+        if not client_email or client_email.strip() == "":
+            return "ERROR CRÍTICO: El usuario es un invitado no registrado. Tienes OBLIGATORIAMENTE que responderle: 'Para agendar una cita o visita, primero debes iniciar sesión o registrarte usando el botón del panel lateral.'"
         
         # 1. Init external APIs using scoped imports
         import os

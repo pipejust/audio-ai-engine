@@ -356,7 +356,22 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         wasi_title = v.get("title", wasi_title)
                         wasi_type = v.get("property_type_label", wasi_type)
                         wasi_address = v.get("address", wasi_address)
-                        wasi_city = v.get("city_label", wasi_city)
+                        
+                        raw_city = v.get("city_label", wasi_city)
+                        if isinstance(raw_city, str) and "," in raw_city:
+                            co_cities = ["Bogotá", "Medellín", "Cali", "Barranquilla", "Cartagena", "Cúcuta", "Ibagué", "Bucaramanga", "Santa Marta", "Villavicencio", "Pereira", "Pasto", "Manizales", "Montería", "Neiva", "Jamundí", "Palmira", "Yumbo", "Rozo"]
+                            matched = False
+                            for c in co_cities:
+                                if c.lower() in raw_city.lower():
+                                    wasi_city = c
+                                    matched = True
+                                    break
+                            if not matched:
+                                parts = [p.strip() for p in raw_city.split(",")]
+                                wasi_city = parts[-4] if len(parts) >= 4 else parts[-1]
+                        else:
+                            wasi_city = raw_city
+                            
                         wasi_map = v.get("map", "")
                         wasi_lat = v.get("latitude")
                         wasi_lng = v.get("longitude")

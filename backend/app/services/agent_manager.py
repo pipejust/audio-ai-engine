@@ -137,6 +137,11 @@ class AgentManager:
                         args = tool_call["args"]
                         tool_call_id = tool_call.get("id", "call_123")
                     
+                    if function_name == "schedule_visits":
+                        if isinstance(args, dict):
+                            args["client_name"] = client_name
+                            args["client_email"] = client_email
+                            
                     print(f"🛠️ LLM Text invoked tool: {function_name} with args: {args}")
                     
                     # Simular petición para ejecutar la misma lógica de los WebSockets

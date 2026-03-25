@@ -101,6 +101,7 @@ class OpenAIRealtimeManager:
                 
                 if project_id == "buscofacil":
                     company_name_ov = "Busco Fácil"
+                    bot_name = "Sol"
                 elif project_id == "xkape":
                     company_name_ov = "Xkape"
                     
@@ -177,7 +178,11 @@ class OpenAIRealtimeManager:
                             await client_ws.send_text(json.dumps({"status": "reasoning"}))
                             await openai_ws.send(json.dumps({"type": "response.create"}))
                     except Exception as e:
-                        pass
+                        print(f"⚠️ Error procesando JSON de frontend: {e}")
+                    continue
+                
+                if message.get("bytes"):
+                    print("🚨 [CRÍTICO] EL FRONTEND ESTÁ ENVIANDO BLOBS BINARIOS DIRECTOS! Deben enviar JSON con Base64 PCM16 como acordado: {\"type\": \"input_audio_buffer.append\", \"audio\": \"base64...\"}")
                     continue
 
         except WebSocketDisconnect:

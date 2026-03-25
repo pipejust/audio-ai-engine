@@ -127,12 +127,12 @@ class ChatRequest(BaseModel):
     session_id: str = "default_session"
     project_id: str = "default"
     context_listing_ids: list[str] = []
-    client_name: str = Field(default="", alias="clientName")
-    client_email: str = Field(default="", alias="clientEmail")
-    client_phone: str = Field(default="", alias="clientPhone")
-    
-    class Config:
-        populate_by_name = True
+    client_name: str = ""
+    client_email: str = ""
+    client_phone: str = ""
+    clientName: str = ""
+    clientEmail: str = ""
+    clientPhone: str = ""
 
 @app.get("/")
 def read_root():
@@ -145,14 +145,18 @@ def chat_with_agent(request: ChatRequest):
     decidirá si necesita consultar la base vectorial, raspar una web, 
     o simplemente responder basándose en su conocimiento.
     """
+    c_name = request.client_name or request.clientName
+    c_email = request.client_email or request.clientEmail
+    c_phone = request.client_phone or request.clientPhone
+    
     result = agent_manager.process_query(
         request.query, 
         request.project_id, 
         request.session_id,
         request.context_listing_ids,
-        request.client_name,
-        request.client_email,
-        request.client_phone
+        c_name,
+        c_email,
+        c_phone
     )
     return result
 

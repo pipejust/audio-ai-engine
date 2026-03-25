@@ -376,6 +376,24 @@ class OpenAIRealtimeManager:
                     }))
                 except Exception as e:
                     print(f"Error enviando propiedades crudas al cliente WS: {e}")
+            
+            if "action" in data:
+                try:
+                    action_payload = {"status": "action", "action": data["action"]}
+                    if "listing_id" in data:
+                        action_payload["listing_id"] = data["listing_id"]
+                    await client_ws.send_text(json.dumps(action_payload))
+                except Exception as e:
+                    pass
+                    
+            if "appointments" in data:
+                try:
+                    await client_ws.send_text(json.dumps({
+                        "status": "appointments_created",
+                        "appointments": data["appointments"]
+                    }))
+                except Exception as e:
+                    pass
                 
             function_output = {
                 "type": "conversation.item.create", 

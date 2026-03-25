@@ -24,7 +24,7 @@ class AgentManager:
         self.vector_store = VectorStoreManager()
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
 
-    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "") -> dict:
+    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "", client_phone: str = "") -> dict:
         """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
         if not query or not str(query).strip():
             return {"response": "", "status": "ignored"}
@@ -49,8 +49,8 @@ class AgentManager:
             dynamic_instructions = get_agent_instructions(project_id, self.bot_name, self.company_name)
             system_prompt = SystemMessage(content=dynamic_instructions)
             
-            if client_name or client_email:
-                system_prompt.content += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
+            if client_name or client_phone:
+                system_prompt.content += f"\n\nREGLA DE CONTEXTO: Tu sistema actual te reporta que hablas con el usuario: {client_name}, Teléfono: {client_phone}.\nSi estos campos NO están vacíos, TIENES EXPRESAMENTE PROHIBIDO volver a pedirle su nombre y teléfono, y debes agendar la visita inmediatamente utilizando estos mismos datos para el payload de la cita. Sólo pídele los datos si estas variables de sistema vienen vacías."
 
             if context_listing_ids:
                 # Inyección instantánea (Cero latencia) del orden visual exacto
@@ -141,6 +141,7 @@ class AgentManager:
                         if isinstance(args, dict):
                             args["client_name"] = client_name
                             args["client_email"] = client_email
+                            args["client_phone"] = client_phone
                             
                     print(f"🛠️ LLM Text invoked tool: {function_name} with args: {args}")
                     

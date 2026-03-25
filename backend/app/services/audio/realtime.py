@@ -131,7 +131,7 @@ class OpenAIRealtimeManager:
                     self.stream_client_to_openai(websocket, openai_ws)
                 )
                 openai_to_client_task = asyncio.create_task(
-                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email)
+                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email, client_phone)
                 )
                 
                 # Esperar a que cualquiera de los dos termine (desconexión)
@@ -213,7 +213,7 @@ class OpenAIRealtimeManager:
             except:
                 pass
 
-    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = ""):
+    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = "", client_phone: str = ""):
         """Recibe eventos de OpenAI. Extrae el audio PCM16, lo empaqueta en WAV y se lo envía al cliente."""
         import base64
         import struct
@@ -330,7 +330,7 @@ class OpenAIRealtimeManager:
                         
                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
                     # Send tool execution to background task to unblock socket
-                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email))
+                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email, client_phone))
         except Exception as e:
             import traceback
             err_str = traceback.format_exc()
@@ -340,7 +340,7 @@ class OpenAIRealtimeManager:
             except:
                 pass
                     
-    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = ""):
+    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = "", client_phone: str = ""):
         """
         Ejecuta el Web Service / Herramienta enviando un payload REST 
         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
@@ -352,6 +352,7 @@ class OpenAIRealtimeManager:
             if function_name == "schedule_visits" and isinstance(args, dict):
                 args["client_name"] = client_name
                 args["client_email"] = client_email
+                args["client_phone"] = client_phone
                 
             tool_req = ToolRequest(project_id=project_id, args=args)
             

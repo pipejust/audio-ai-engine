@@ -129,6 +129,7 @@ class ChatRequest(BaseModel):
     context_listing_ids: list[str] = []
     client_name: str = Field(default="", alias="clientName")
     client_email: str = Field(default="", alias="clientEmail")
+    client_phone: str = Field(default="", alias="clientPhone")
     
     class Config:
         populate_by_name = True
@@ -150,7 +151,8 @@ def chat_with_agent(request: ChatRequest):
         request.session_id,
         request.context_listing_ids,
         request.client_name,
-        request.client_email
+        request.client_email,
+        request.client_phone
     )
     return result
 
@@ -176,9 +178,10 @@ async def websocket_endpoint(websocket: WebSocket):
     project_id = websocket.query_params.get("project_id", "default")
     client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
     client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
+    client_phone = websocket.query_params.get("clientPhone", websocket.query_params.get("client_phone", ""))
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
-    await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, context_listing_ids)
+    await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
 
 @app.websocket("/ws/realtime/{project_id}")
 async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
@@ -189,9 +192,10 @@ async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
     await voice_gateway.connect(websocket)
     client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
     client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
+    client_phone = websocket.query_params.get("clientPhone", websocket.query_params.get("client_phone", ""))
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
-    await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, context_listing_ids)
+    await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
 
 @app.get("/api/test-openai")
 async def test_openai_api():

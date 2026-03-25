@@ -50,7 +50,9 @@ class AgentManager:
             system_prompt = SystemMessage(content=dynamic_instructions)
             
             if client_name or client_phone:
-                system_prompt.content += f"\n\nREGLA DE CONTEXTO: Tu sistema actual te reporta que hablas con el usuario: {client_name}, Teléfono: {client_phone}.\nSi estos campos NO están vacíos, TIENES EXPRESAMENTE PROHIBIDO volver a pedirle su nombre y teléfono, y debes agendar la visita inmediatamente utilizando estos mismos datos para el payload de la cita. Sólo pídele los datos si estas variables de sistema vienen vacías."
+                system_prompt.content += f"\n\nREGLA DE CONTEXTO: OBLIGATORIO LEER.\nEl sistema te informa que estás atendiendo al usuario: {client_name}, Teléfono: {client_phone}.\nComo ya tienes estos datos, TIENES STRICTAMENTE PROHIBIDO preguntar su nombre o teléfono. Si el usuario te pide agendar, EJECUTA LA HERRAMIENTA DE AGENDAMIENTO INMEDIATAMENTE e INYECTA estos datos directamente en el JSON de 'appointments'. Cero preguntas."
+            else:
+                system_prompt.content += "\n\nREGLA DE CONTACTO: Eres un invitado anónimo. Antes de emitir el JSON final de 'appointments', SIEMPRE pregunta amablemente al cliente: '¿A qué nombre y número de celular dejo registrada la visita?'. Una vez que el usuario los proporcione, debes emitir esos datos exactos e inyectarlos localmente en el arreglo JSON de la respuesta usando las llaves 'client_name' y 'client_phone'. Si el usuario se niega a darlos o dice 'usa mi perfil', envía ''."
 
             if context_listing_ids:
                 # Inyección instantánea (Cero latencia) del orden visual exacto
@@ -73,6 +75,8 @@ class AgentManager:
                         system_prompt.content += f"\n\nCONTEXTO VISUAL ACTUAL (Viendo en pantalla):\n{context_text}\n(EL USUARIO TE ESTÁ PREGUNTANDO DIRECTAMENTE SOBRE ESTAS PROPIEDADES. NO uses la herramienta 'search_properties' para buscar esto, confía en esta información para responder orgánicamente sus dudas)."
                 except Exception as e:
                     print(f"Error cargando contexto visual de vector_store: {e}")
+            
+            print(f"--- DEBUG SYSTEM PROMPT ---\n{system_prompt.content}\n----------------------------")
 
             # 2. Cargar las mismas Tools pero adaptar schema Realtime -> ChatCompletion
             raw_tools = get_agent_tools(project_id)
@@ -162,14 +166,17 @@ class AgentManager:
                     try:
                         # Ejecución local síncrona
                         data = execute_tool(function_name, tool_req, mock_req)
-                        result_text = data.get("result_text", "Done.")
-                        if "raw_properties" in data:
-                            all_raw_properties.extend(data["raw_properties"])
-                        if "appointments" in data:
-                            scheduled_appointments.extend(data["appointments"])
-                        if "action" in data and data["action"] == "view_details":
-                            ui_action = "view_details"
-                            ui_listing_id = data.get("listing_id")
+                        if isinstance(data, str):
+                            result_text = data
+                        else:
+                            result_text = data.get("result_text", "Done.")
+                            if "raw_properties" in data:
+                                all_raw_properties.extend(data["raw_properties"])
+                            if "appointments" in data:
+                                scheduled_appointments.extend(data["appointments"])
+                            if "action" in data and data["action"] == "view_details":
+                                ui_action = "view_details"
+                                ui_listing_id = data.get("listing_id")
                     except Exception as e:
                         print(f"❌ Tool Error in Text Chat: {e}")
                         result_text = f"Error ejecutando la herramienta: {e}"

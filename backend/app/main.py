@@ -121,13 +121,17 @@ app.include_router(tools.router, prefix="/api/tools")
 app.include_router(settings.router)
 
 
+from pydantic import Field
 class ChatRequest(BaseModel):
     query: str
     session_id: str = "default_session"
     project_id: str = "default"
     context_listing_ids: list[str] = []
-    client_name: str = ""
-    client_email: str = ""
+    client_name: str = Field(default="", alias="clientName")
+    client_email: str = Field(default="", alias="clientEmail")
+    
+    class Config:
+        populate_by_name = True
 
 @app.get("/")
 def read_root():
@@ -170,8 +174,8 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await voice_gateway.connect(websocket)
     project_id = websocket.query_params.get("project_id", "default")
-    client_name = websocket.query_params.get("client_name", "")
-    client_email = websocket.query_params.get("client_email", "")
+    client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
+    client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
     await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, context_listing_ids)
@@ -183,8 +187,8 @@ async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
     con frontends cacheados en Vercel que apuntan a la ruta antigua.
     """
     await voice_gateway.connect(websocket)
-    client_name = websocket.query_params.get("client_name", "")
-    client_email = websocket.query_params.get("client_email", "")
+    client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
+    client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
     await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, context_listing_ids)

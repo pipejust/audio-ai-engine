@@ -390,8 +390,8 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                             last = user_data.get("last_name", "")
                             if first or last:
                                 vendedor_nombre = f"{first} {last}".strip()
-                            vendedor_email = user_data.get("email", vendedor_email)
-                            vendedor_celular = user_data.get("cell_phone", vendedor_celular)
+                            vendedor_email = user_data.get("email") or vendedor_email
+                            vendedor_celular = user_data.get("cell_phone") or vendedor_celular
             except Exception as e:
                 print(f"Error fetching WASI details for {pid}: {e}")
                 

@@ -16,7 +16,7 @@ class OpenAIRealtimeManager:
         self.model = "gpt-4o-realtime-preview-2024-12-17"
         self.url = f"wss://api.openai.com/v1/realtime?model={self.model}"
 
-    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", context_listing_ids: list[str] = None):
+    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", client_phone: str = "", context_listing_ids: list[str] = None):
         """
         Gestiona la conexión WebSocket para un cliente específico usando OpenAI Realtime API.
         """
@@ -62,8 +62,8 @@ class OpenAIRealtimeManager:
                 # Configurar Instrucciones de OpenAI al inicio de la sesión
                 base_instructions = get_agent_instructions(project_id, self.agent_manager.bot_name, self.agent_manager.company_name)
                 
-                if client_name or client_email:
-                    base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
+                if client_name or client_email or client_phone:
+                    base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}', su correo es '{client_email}' y su teléfono es '{client_phone}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
 
                 if context_listing_ids:
                     mapping_text = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(context_listing_ids)])

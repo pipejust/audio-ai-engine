@@ -153,7 +153,7 @@ class OpenAIRealtimeManager:
         from pydub import AudioSegment
         try:
             while True:
-                # Permite recibir tanto texto (comandos) como bytes (audio)
+                # Permite recibir comandos y audio en base64 via JSON
                 message = await client_ws.receive()
                 
                 if message["type"] == "websocket.disconnect":
@@ -166,41 +166,19 @@ class OpenAIRealtimeManager:
                             print("🛑 Interrupción manual recibida desde Frontend")
                             cancel_event = {"type": "response.cancel"}
                             await openai_ws.send(json.dumps(cancel_event))
+                        elif data.get("type") == "input_audio_buffer.append":
+                            append_event = {
+                                "type": "input_audio_buffer.append",
+                                "audio": data.get("audio", "")
+                            }
+                            await openai_ws.send(json.dumps(append_event))
+                        elif data.get("type") == "input_audio_buffer.commit":
+                            await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                            await client_ws.send_text(json.dumps({"status": "reasoning"}))
+                            await openai_ws.send(json.dumps({"type": "response.create"}))
                     except Exception as e:
                         pass
                     continue
-                    
-                if message.get("bytes"):
-                    audio_bytes = message["bytes"]
-                    try:
-                        def convert_to_pcm16(b: bytes) -> str:
-                            import base64
-                            import io
-                            from pydub import AudioSegment
-                            seg = AudioSegment.from_file(io.BytesIO(b), format="webm")
-                            seg = seg.set_frame_rate(24000).set_channels(1).set_sample_width(2)
-                            return base64.b64encode(seg.raw_data).decode("utf-8")
-
-                        audio_b64 = await asyncio.to_thread(convert_to_pcm16, audio_bytes)
-                        
-                        # Enviar el audio
-                        append_event = {
-                            "type": "input_audio_buffer.append",
-                            "audio": audio_b64
-                        }
-                        await openai_ws.send(json.dumps(append_event))
-                        
-                        # Como el frontend envía frases completas, le indicamos a OpenAI que evalúe y responda de inmediato
-                        commit_event = {"type": "input_audio_buffer.commit"}
-                        await openai_ws.send(json.dumps(commit_event))
-                        
-                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
-                        
-                        response_event = {"type": "response.create"}
-                        await openai_ws.send(json.dumps(response_event))
-                        
-                    except Exception as conv_e:
-                        print(f"⚠️ Error convirtiendo WebM a PCM16 o enviando a OpenAI: {conv_e}")
 
         except WebSocketDisconnect:
             print("🔌 Cliente se desconectó de la Opción B.")
@@ -275,6 +253,13 @@ class OpenAIRealtimeManager:
                         
                     await client_ws.send_text(json.dumps({"status": "listening", "response": transcript}))
                     
+                    # Enviar evento de transcripción visual para la UI
+                    await client_ws.send_text(json.dumps({
+                        "status": "transcription",
+                        "role": "assistant",
+                        "text": transcript
+                    }))
+                    
                 elif event["type"] == "conversation.item.input_audio_transcription.completed":
                     transcript = event.get("transcript", "")
                     if transcript:
@@ -301,7 +286,12 @@ class OpenAIRealtimeManager:
                                 print(f"Warning borrando item: {del_e}")
                         else:
                             print(f"🗣️ Usuario dijo: {transcript}")
-                            await client_ws.send_text(json.dumps({"transcription": transcript}))
+                            # Emitir evento oficial de transcripción validado
+                            await client_ws.send_text(json.dumps({
+                                "status": "transcription",
+                                "role": "user",
+                                "text": transcript
+                            }))
                 
                 # Manejo de llamadas a herramientas (RAG o APIs externas)
                 elif event["type"] == "response.function_call_arguments.done":

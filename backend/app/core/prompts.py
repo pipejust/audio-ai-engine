@@ -105,7 +105,7 @@ def get_agent_tools(project_id: str) -> list:
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "listing_id": {"type": "string", "description": "ID del inmueble a visitar."},
+                                    "listing_id": {"type": "string", "description": "ID del inmueble a visitar. OBLIGATORIO: DEBE ser un STRING (texto con comillas), NUNCA un número entero."},
                                     "date": {"type": "string", "description": "FECHA OBLIGATORIA EN FORMATO TÉCNICO YYYY-MM-DD. No uses texto como 'próximo sabado'. Ej: 2026-03-25."},
                                     "time": {"type": "string", "description": "HORA OBLIGATORIA EN FORMATO HH:MM:SS (24 horas). Ej: 15:30:00."},
                                     "client_name": {"type": "string", "description": "Nombre proporcionado por el usuario o vacío ''."},
@@ -125,7 +125,7 @@ def get_agent_tools(project_id: str) -> list:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "listing_id": {"type": "string", "description": "ID del inmueble que el usuario quiere ver."}
+                        "listing_id": {"type": "string", "description": "ID del inmueble que el usuario quiere ver. OBLIGATORIO: DEBE ser un STRING (texto con comillas), NUNCA un número entero."}
                     },
                     "required": ["listing_id"]
                 }

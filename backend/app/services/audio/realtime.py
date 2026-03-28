@@ -47,6 +47,41 @@ class OpenAIRealtimeManager:
             print(f"⚠️ No se pudo obtener la configuración de voz de la BD: {e}")
 
         try:
+            # 0. Hidratar Contexto Visual desde WASI (Para evitar alucinaciones de IDs)
+            hydrated_mapping_text = ""
+            if context_listing_ids:
+                import requests
+                from app.services.wasi_api import WasiAPI
+                import asyncio
+                
+                wasi = WasiAPI()
+                
+                def fetch_prop(pid):
+                    try:
+                        payload = wasi._get_payload({"id_property": pid})
+                        res = requests.post(f"{wasi.base_url}/property/search", data=payload, headers=wasi._get_headers(), timeout=2.5)
+                        data = res.json()
+                        for v in data.values():
+                            if isinstance(v, dict) and str(v.get("id_property")) == str(pid):
+                                title = v.get("title", "")
+                                sale = int(v.get("sale_price", 0) or 0)
+                                rent = int(v.get("rent_price", 0) or 0)
+                                price_str = f"${sale:,.0f}" if sale > 0 else f"${rent:,.0f}"
+                                return f"ID \"{pid}\" - {title}, Precio: {price_str}"
+                    except Exception as e:
+                        pass
+                    return f"ID \"{pid}\""
+                
+                mapping_lines = []
+                # Hit in parallel thread pool to avoid blocking ASGI loop
+                tasks = [asyncio.to_thread(fetch_prop, pid) for pid in context_listing_ids]
+                results = await asyncio.gather(*tasks)
+                
+                for i, res in enumerate(results):
+                    mapping_lines.append(f"Propiedad {i+1}: {res}")
+                
+                hydrated_mapping_text = "\n".join(mapping_lines)
+                
             # Conexión persistente hacia OpenAI
             async with websockets.connect(self.url, additional_headers=headers) as openai_ws:
                 print("✅ [Opción B] Conectado a OpenAI Realtime API")
@@ -65,9 +100,8 @@ class OpenAIRealtimeManager:
                 if client_name or client_email or client_phone:
                     base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}', su correo es '{client_email}' y su teléfono es '{client_phone}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
 
-                if context_listing_ids:
-                    mapping_text = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(context_listing_ids)])
-                    base_instructions += f"\n\n[MAPEO VISUAL EN PANTALLA]:\nEste es el orden cronológico exacto de las casas que el cliente está viendo ahora mismo:\n{mapping_text}\n(Usa estrictamente estos IDs referenciales si el usuario te pide ver 'la primera', 'la 3', 'esa última', etc.)."
+                if hydrated_mapping_text:
+                    base_instructions += f"\n\n[ESTADO ACTUAL EN LA PANTALLA DEL USUARIO]:\nEsta es la lista cronológica de las propiedades que el cliente está viendo ahora mismo:\n{hydrated_mapping_text}\n(Si el usuario te pide ver o agendar la primera propiedad o la número 1, usa SIEMPRE Y OBLIGATORIAMENTE el ID '{context_listing_ids[0]}'). Así tendrás consciencia espacial total de lo que el usuario ve y llamarás tus herramientas con los ALFANUMÉRICOS REALES exactos."
                 
                 instructions = base_instructions + "\n\nREGLA CRÍTICA INQUEBRANTABLE SOBRE EL IDIOMA: Por defecto el usuario habla español de Colombia, PERO si el usuario te habla en INGLÉS o en otro idioma, DEBES responderle inmediatamente en ese mismo idioma. NUNCA asumas que el usuario habla en portugués (si escuchas algo que parezca portugués, es una alucinación del sistema de audio y debes ignorarla o asumirla como español/inglés). Nunca transcribas ruidos o silencios como palabras extrañas (ej. 'Thank you for watching'). Si no entiendes el audio o son solo ruidos de teclado o estática, asume que es ruido de fondo e ignóralo. OBLIGATORIO: Cuando necesites buscar información y debas hacer esperar al usuario, NO uses siempre la misma frase. Varía tus frases de espera o muletillas aleatoriamente (ej: 'Mmm, déjame revisar...', 'Un segundo, voy a consultar...', 'A ver qué encuentro...')."
                 tools = get_agent_tools(project_id)
@@ -225,6 +259,13 @@ class OpenAIRealtimeManager:
                     self.response_in_progress = True
                 elif event["type"] == "response.done":
                     self.response_in_progress = False
+                    if getattr(self, "should_close_ws", False):
+                        print("🚪 Cortando WebSocket Activamente (end_call invocado) tras despedida de la IA.")
+                        try:
+                            await client_ws.close(1000)
+                        except Exception:
+                            pass
+                        return
                 
                 # REPORTE DE DEPURACIÓN HACIA EL CLIENTE
                 try:
@@ -321,6 +362,9 @@ class OpenAIRealtimeManager:
                         }
                         await openai_ws.send(json.dumps(function_output))
                         await openai_ws.send(json.dumps({"type": "response.create"}))
+                        
+                        # Señal de Cierre para el interceptor `response.done`
+                        self.should_close_ws = True
                         continue
                         
                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.

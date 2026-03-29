@@ -52,7 +52,6 @@ class OpenAIRealtimeManager:
             if context_listing_ids:
                 import requests
                 from app.services.wasi_api import WasiAPI
-                import asyncio
                 
                 wasi = WasiAPI()
                 

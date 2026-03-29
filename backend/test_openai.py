@@ -30,21 +30,38 @@ async def test():
         }
     }
     
+    greeting_event = {
+        "type": "conversation.item.create",
+        "item": {
+            "type": "message",
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "El usuario acaba de abrir la aplicación. Saluda."
+                }
+            ]
+        }
+    }
+    
     try:
         async with websockets.connect(url, additional_headers=headers) as ws:
             first_msg = await ws.recv()
-            print("Handshake:", first_msg)
+            print("Handshake:", json.loads(first_msg).get("type"))
             
             await ws.send(json.dumps(setup_event))
             print("Session update sent.")
             
-            while True:
+            await ws.send(json.dumps(greeting_event))
+            await ws.send(json.dumps({"type": "response.create"}))
+            print("Greeting and response sent.")
+            
+            for _ in range(5):
                 resp = await ws.recv()
-                print("Response:", resp)
-                # Break to avoid infinite loop for test
-                if "error" in resp:
-                    break
+                print("Response:", json.loads(resp).get("type"))
+                
     except Exception as e:
         print("Exception:", e)
 
-asyncio.run(test())
+if __name__ == "__main__":
+    asyncio.run(test())

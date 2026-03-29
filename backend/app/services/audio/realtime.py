@@ -216,7 +216,26 @@ class OpenAIRealtimeManager:
                     continue
                 
                 if message.get("bytes"):
-                    print("🚨 [CRÍTICO] EL FRONTEND ESTÁ ENVIANDO BLOBS BINARIOS DIRECTOS! Deben enviar JSON con Base64 PCM16 como acordado: {\"type\": \"input_audio_buffer.append\", \"audio\": \"base64...\"}")
+                    audio_webm = message["bytes"]
+                    buf = io.BytesIO(audio_webm)
+                    try:
+                        audio_segment = AudioSegment.from_file(buf)
+                        # Exportar a PCM16 (raw) a 24000Hz mono, formato esperado por OpenAI
+                        raw_pcm = audio_segment.set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
+                        
+                        append_event = {
+                            "type": "input_audio_buffer.append",
+                            "audio": base64.b64encode(raw_pcm).decode("utf-8")
+                        }
+                        await openai_ws.send(json.dumps(append_event))
+                        
+                        # Como el frontend envía blobs completos, forzamos a OpenAI a procesar y responder de inmediato
+                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
+                        await openai_ws.send(json.dumps({"type": "response.create"}))
+                        
+                    except Exception as e:
+                        print(f"Error parseando WebM chunk: {e}")
                     continue
 
         except WebSocketDisconnect:
@@ -287,7 +306,8 @@ class OpenAIRealtimeManager:
                     # Send raw PCM16 base64 decoded bytes directly to the frontend for instant playback
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    await client_ws.send_bytes(pcm_bytes)
+                    wav_chunk = create_wav_header(pcm_bytes)
+                    await client_ws.send_bytes(wav_chunk)
                 
                 elif event["type"] == "response.audio_transcript.delta":
                     transcript_delta = event.get("delta", "")

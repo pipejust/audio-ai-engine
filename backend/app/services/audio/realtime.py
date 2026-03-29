@@ -250,6 +250,7 @@ class OpenAIRealtimeManager:
 
         try:
             self.response_in_progress = False
+            should_close_ws = False
             
             while True:
                 message = await openai_ws.recv()
@@ -259,7 +260,7 @@ class OpenAIRealtimeManager:
                     self.response_in_progress = True
                 elif event["type"] == "response.done":
                     self.response_in_progress = False
-                    if getattr(self, "should_close_ws", False):
+                    if should_close_ws:
                         print("🚪 Cortando WebSocket Activamente (end_call invocado) tras despedida de la IA.")
                         try:
                             await client_ws.close(1000)
@@ -364,7 +365,7 @@ class OpenAIRealtimeManager:
                         await openai_ws.send(json.dumps({"type": "response.create"}))
                         
                         # Señal de Cierre para el interceptor `response.done`
-                        self.should_close_ws = True
+                        should_close_ws = True
                         continue
                         
                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.

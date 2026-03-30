@@ -245,13 +245,28 @@ class OpenAIRealtimeManager:
                         # Exportar a PCM16 (raw) a 24000Hz mono, formato esperado por OpenAI
                         raw_pcm = audio_segment.set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
                         
+                        import math
+                        import struct
+                        count = len(raw_pcm) // 2
+                        if count > 0:
+                            clean_pcm_bytes = raw_pcm[:count*2]
+                            shorts = struct.unpack(f"<{count}h", clean_pcm_bytes)
+                            sum_squares = sum(s * s for s in shorts)
+                            rms = math.sqrt(sum_squares / count)
+                        else:
+                            rms = 0
+                            
+                        if rms < 400:
+                            # Ignorar silencios absolutos o ruidos muy bajos, no saturar a Whisper ni retrasar el VAD Backend
+                            continue
+                        
                         append_event = {
                             "type": "input_audio_buffer.append",
                             "audio": base64.b64encode(raw_pcm).decode("utf-8")
                         }
                         await openai_ws.send(json.dumps(append_event))
                         
-                        # Actualizamos el tracker de VAD Activo del Backend
+                        # Actualizamos el tracker de VAD Activo del Backend (Solo se actualiza con voz real, RMS > 400)
                         self.last_audio_received_time = time.time()
                         self.has_uncommitted_audio = True
                         
@@ -294,6 +309,7 @@ class OpenAIRealtimeManager:
             self.response_in_progress = False
             should_close_ws = False
             current_bot_audio_buffer = bytearray()
+            current_bot_audio_buffer = bytearray()
             
             while True:
                 message = await openai_ws.recv()
@@ -325,12 +341,18 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
-                    # Restoring instantaneous micro-batch streaming to eliminate the 4-second phrase assembly latency
+                    # Re-buffer in backend: Send one solid WAV frame to eliminate DOM clicking.
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    wav_chunk = create_wav_header(pcm_bytes)
-                    await client_ws.send_bytes(wav_chunk)
+                    current_bot_audio_buffer.extend(pcm_bytes)
                 
+                elif event["type"] == "response.audio.done":
+                    # Emite un solo archivo continuo para el DOM
+                    if len(current_bot_audio_buffer) > 0:
+                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
+                        await client_ws.send_bytes(wav_file)
+                        current_bot_audio_buffer.clear()
+                        
                 elif event["type"] == "response.audio_transcript.delta":
                     transcript_delta = event.get("delta", "")
                     if transcript_delta:

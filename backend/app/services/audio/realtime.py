@@ -188,6 +188,31 @@ class OpenAIRealtimeManager:
         import io
         import time
         from pydub import AudioSegment
+        import time
+        import asyncio
+
+        self.last_audio_received_time = time.time()
+        self.has_uncommitted_audio = False
+
+        async def check_silence():
+            while True:
+                await asyncio.sleep(0.3)
+                # Si han pasado 1.2 segundos sin voz (RMS > 350) y tenemos audio pendiente...
+                if getattr(self, "has_uncommitted_audio", False) and (time.time() - getattr(self, "last_audio_received_time", time.time())) > 1.2:
+                    try:
+                        self.has_uncommitted_audio = False
+                        
+                        if getattr(self, "response_in_progress", False):
+                            await openai_ws.send(json.dumps({"type": "response.cancel"}))
+                            self.response_in_progress = False
+                            
+                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
+                        await openai_ws.send(json.dumps({"type": "response.create"}))
+                    except Exception:
+                        pass
+        
+        silence_task = asyncio.create_task(check_silence())
 
         try:
             while True:
@@ -262,6 +287,7 @@ class OpenAIRealtimeManager:
                         }
                         await openai_ws.send(json.dumps(append_event))
                         self.has_uncommitted_audio = True
+                        self.last_audio_received_time = time.time()
                         
                     except Exception as e:
                         print(f"Error parseando WebM chunk: {e}")
@@ -269,10 +295,12 @@ class OpenAIRealtimeManager:
 
         except WebSocketDisconnect:
             print("🔌 Cliente se desconectó de la Opción B.")
+            silence_task.cancel()
         except Exception as e:
             import traceback
             err_str = traceback.format_exc()
             print(f"❌ Error procesando audio del cliente: {err_str}")
+            silence_task.cancel()
             try:
                 await client_ws.send_text(json.dumps({"status": "error", "message": f"ClientStream Task Crash: {e}"}))
             except:

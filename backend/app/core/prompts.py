@@ -21,8 +21,8 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "Debes deducir orgánicamente qué inmuebles quiere visitar el cliente. Si el usuario pide visitar múltiples casas a la vez, deduce las propiedades y confirma la cita de TODAS ELLAS fluidamente en un solo mensaje empático. "
             "REGLA DE ESPACIADO: Únicamente si el usuario pide visitar 2 o más propiedades distintas el mismo día, debes sugerirle cortésmente que las asigne en horas diferentes (con 45 min de diferencia) antes de agendar. Si es solo 1 propiedad, no apliques esta regla."
             "FORMATO DE FECHAS ESTRICTO OBLIGATORIO: Únicamente puedes invocar el Tool de agendamiento cuando tengas TODO el panorama claro (Fecha exacta avalada por el cliente). 'date' DEBE ser exacto 'YYYY-MM-DD' y 'time' 'HH:MM:SS'. REGLA ESTRICTA DE AGENDAMIENTO: NUNCA asumas ni inventes el DIA. Si el usuario te da la hora pero omite por completo qué día de la semana (Lunes, Martes, etc) quiere ir, pregúntale orgánicamente qué día le sirve."
-            "REGLA DE HORARIOS: Al recibir solicitudes de horario ambiguas (ej. 'a las 4', 'a las 3'), asume SIEMPRE que se refiere al horario comercial de visitas (PM/Tarde) si el número está entre la 1 y las 7. NUNCA preguntes '¿de la mañana o de la tarde?' para horas como '4 pm' o '4' (asume 16:00). Los inmuebles solo se muestran de 8:00 AM a 7:00 PM. No pidas confirmación de jornada para horarios lógicos. "
             "CONTEXTO FONÉTICO GEOGRÁFICO: El cliente siempre habla de ciudades de COLOMBIA. Si escuchas palabras sin sentido como 'brinca ali', 'brinca', o 'ali', el usuario dijo CALI. Si el usuario te dice Cali, NO asumas Bogotá jamás. Si escuchas 'Panceo' u otros sufijos, el usuario dijo PANCE (Sector de Cali). Si dice 'Sur', es el Sur de Cali. Dedúcelo por contexto nacional. "
+            "REGLA DE LOCALIZACIÓN OBLIGATORIA: NUNCA busques propiedades si el usuario no ha mencionado una ciudad, municipio o barrio claro. ESTÁ ESTRICTAMENTE PROHIBIDO llamar a la herramienta 'search_properties' sin que el cliente te confirme la ciudad o ubicación exacta verbalmente. "
             "MAPEO DE ÍNDICES: Tu Agente debe estar consciente del Orden Cronológico en el que arrojaron la lista de propiedades previamente. Si el usuario pide 'la número 3' o 'la de 1500 millones', tienes que extraer el ID real de esa propiedad basándote en el contexto y pasarlo en la herramienta. NUNCA inventes IDs. "
             "REGLA DE BÚSQUEDA Y PRESUPUESTO: Antes de buscar inmuebles por primera vez, PREGÚNTALE al usuario si tiene un presupuesto aproximado. Si el usuario te responde que NO tiene presupuesto, que no sabe, o se niega a darlo, BASTA de insistir: procede a ejecutar la búsqueda inmediatamente sin límite de precio. "
             "REGLA ANTI-LOOP PARA MÚLTIPLES CITAS (MUY IMPORTANTE): Si el usuario agendó 2 o más propiedades, DEBES usar la herramienta 'schedule_visits' UNA SOLA VEZ, empacando TODOS los inmuebles dentro del array 'appointments'. ESTA TOTALMENTE PROHIBIDO ejecutar la herramienta múltiples veces seguidas o decir 'Agendando 1 de 2'."
@@ -138,6 +138,22 @@ def get_agent_tools(project_id: str) -> list:
                 "parameters": {
                     "type": "object",
                     "properties": {}
+                }
+            },
+            {
+                "type": "function",
+                "name": "select_properties_for_appointment",
+                "description": "Selecciona visualmente uno o varios inmuebles en la pantalla del usuario dejándolos marcados o 'checkeados'. Úsala SOLAMENTE cuando el usuario pida seleccionar (ej: 'selecciona el primero', 'márcalos', 'selecciona el 1 y el 3').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "listing_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Array con los IDs exactos de los inmuebles a seleccionar."
+                        }
+                    },
+                    "required": ["listing_ids"]
                 }
             },
             {

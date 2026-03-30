@@ -296,6 +296,15 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             "action": "close_details"
         }
         
+    elif function_name == "select_properties_for_appointment":
+        listing_ids = args.get("listing_ids", [])
+        return {
+            "status": "success",
+            "result_text": "Dile amablemente al usuario: 'He marcado esas propiedades en pantalla para ti. ¿Te gustaría agendar una visita para alguna fecha y hora en específico?'",
+            "action": "select_properties",
+            "listing_ids": listing_ids
+        }
+        
     elif function_name == "schedule_visits":
         client_name = args.get("client_name", "")
         client_email = args.get("client_email", "")

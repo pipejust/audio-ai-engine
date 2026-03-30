@@ -408,13 +408,18 @@ class OpenAIRealtimeManager:
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
                     
-                    # CÁLCULO FÍSICO ESTRICTO DEL AUDIO PARA HALF-DUPLEX MUTE:
+                    # CÁLCULO FÍSICO ESTRICTO DEL AUDIO PARA HALF-DUPLEX MUTE (FIFO QUEUE):
                     # 1 segundo de PCM16 a 24000Hz Mono = Exactamente 48000 bytes
-                    self.turn_audio_bytes = getattr(self, "turn_audio_bytes", 0) + len(pcm_bytes)
-                    duration_seconds = self.turn_audio_bytes / 48000.0
-                    turn_start = getattr(self, "turn_start_time", time.time())
-                    # Sumamos 0.8s matemáticos para absorber la latencia HTTP (ping) más el buffering HTML5 del Frontend React
-                    self.projected_audio_end_time = turn_start + duration_seconds + 0.8
+                    chunk_duration = len(pcm_bytes) / 48000.0
+                    time_now = time.time()
+                    current_projected = getattr(self, "projected_audio_end_time", 0)
+                    
+                    if current_projected < time_now:
+                        # Frontend en silencio absoluto: Sumamos latencia HTTP/Buffering (0.8s)
+                        self.projected_audio_end_time = time_now + chunk_duration + 0.8
+                    else:
+                        # Frontend ocupado reproduciendo: Encolamos matemáticamente el nuevo chunk tras el final actual
+                        self.projected_audio_end_time = current_projected + chunk_duration
                     
                     current_bot_audio_buffer.extend(pcm_bytes)
                     

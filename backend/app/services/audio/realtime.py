@@ -451,7 +451,7 @@ class OpenAIRealtimeManager:
                         ]
                         
                         is_echo = False
-                        for phrase in ["sol de busco", "soy sol de", "sueldo el disco", "sondevos", "sol de moscu", "sol de moscú"]:
+                        for phrase in ["sol de busco", "soy sol", "hola soy", "sueldo el disco", "sondevos", "sol de moscu", "sol de moscú", "soy sushi", "shushi", "sushi"]:
                             if phrase in clean_text:
                                 is_echo = True
                         

@@ -389,6 +389,7 @@ class OpenAIRealtimeManager:
                 
                 if event["type"] == "response.audio.delta":
                     # Actualizamos el reloj para el Cooldown Anti-Eco del servidor
+                    import time
                     self.last_ai_speech_time = time.time()
                     
                     # Dynamic Phrase-Pacing: Acumulamos el PCM hasta alcanzar naturalmente el tamaño orgánico

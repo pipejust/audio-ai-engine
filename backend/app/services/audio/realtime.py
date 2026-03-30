@@ -261,6 +261,9 @@ class OpenAIRealtimeManager:
                                 self.last_audio_received_time = time.time()
                         elif data.get("type") == "input_audio_buffer.commit":
                             print("📥 FRONTEND WS JSON: input_audio_buffer.commit")
+                            if getattr(self, "tool_in_progress", False):
+                                print("⚠️ Backend IGNORÓ el commit porque hay una búsqueda/tool en progreso.")
+                                continue
                             if not getattr(self, "has_uncommitted_audio", False):
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS fue muy bajo).")
                                 continue
@@ -506,6 +509,7 @@ class OpenAIRealtimeManager:
         Ejecuta el Web Service / Herramienta enviando un payload REST 
         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
         """
+        self.tool_in_progress = True
         import json
         import asyncio
         from app.routers.tools import execute_tool, ToolRequest
@@ -589,4 +593,6 @@ class OpenAIRealtimeManager:
             error_output = {"type": "conversation.item.create", "item": {"type": "function_call_output", "call_id": call_id, "output": "Se produjo un error al conectar con el servidor externo."}}
             await openai_ws.send(json.dumps(error_output))
             await openai_ws.send(json.dumps({"type": "response.create"}))
+        finally:
+            self.tool_in_progress = False
 

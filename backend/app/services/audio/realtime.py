@@ -211,10 +211,12 @@ class OpenAIRealtimeManager:
                             }
                             await openai_ws.send(json.dumps(append_event))
                         elif data.get("type") == "input_audio_buffer.commit":
+                            print("📥 FRONTEND WS JSON: input_audio_buffer.commit")
                             if not getattr(self, "has_uncommitted_audio", False):
-                                # El VAD del frontend detectó silencios pero el backend RMS dropeó todo (0 bytes a OpenAI). No podemos hacer commit o la API crasheará por Empty Buffer.
+                                print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS fue muy bajo).")
                                 continue
                             
+                            print("✅ Commit aceptado. Activando IA para procesar el audio aportado...")
                             if getattr(self, "response_in_progress", False):
                                 await openai_ws.send(json.dumps({"type": "response.cancel"}))
                                 self.response_in_progress = False
@@ -246,8 +248,12 @@ class OpenAIRealtimeManager:
                         else:
                             rms = 0
                             
-                        if rms < 500:
-                            # Ignorar silencios, ruidos de fondo, respiraciones y ecos de parlante de la propia IA.
+                        # DEBUG: Ver los decibeles que detecta el servidor para calibrar micrófonos de celular
+                        if rms >= 10:
+                            print(f"🎤 RMS entrante: {rms:.0f}")
+                            
+                        if rms < 350:
+                            # Ignorar silencios, ruidos de fondo, y ecos de parlante
                             continue
                         
                         append_event = {

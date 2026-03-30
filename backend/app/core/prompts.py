@@ -85,9 +85,10 @@ def get_agent_tools(project_id: str) -> list:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "location": {"type": "string", "description": "Ciudad, barrio o sector."},
+                        "location": {"type": "string", "description": "Ciudad, barrio o sector. OBLIGATORIO: Si el usuario te pide un inmueble pero no menciona la CIUDAD, tienes que preguntarle en qué ciudad busca antes de ejecutar esta herramienta."},
                         "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc."},
-                        "max_price": {"type": "string", "description": "Presupuesto máximo numérico. Si el usuario no ha mencionado su presupuesto, pregúntaselo primero. PERO si afirma no tener presupuesto o no saberlo, envía '100000000000' (cien mil millones) o déjalo vacío para buscar sin límite."},
+                        "min_price": {"type": "string", "description": "Presupuesto mínimo numérico mencionado por el usuario (ej si dice 'entre 1000 y 1400', esto es 1000000000). Déjalo vacío si no indica mínimo."},
+                        "max_price": {"type": "string", "description": "Presupuesto máximo numérico. Si el usuario no ha mencionado su presupuesto máximo, pregúntaselo primero. PERO si afirma no tener presupuesto o no saberlo, envía '100000000000'."},
                         "bedrooms": {"type": "string", "description": "Número de habitaciones en texto."}
                     }
                 }
@@ -101,22 +102,21 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "client_name": {"type": "string", "description": "Nombre completo del usuario."},
                         "client_email": {"type": "string", "description": "Correo electrónico del usuario."},
+                        "client_phone": {"type": "string", "description": "Celular del usuario."},
                         "appointments": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "listing_id": {"type": "string", "description": "ID del inmueble a visitar. OBLIGATORIO: DEBE ser un STRING (texto con comillas), NUNCA un número entero."},
-                                    "date": {"type": "string", "description": "FECHA OBLIGATORIA EN FORMATO TÉCNICO YYYY-MM-DD. No uses texto como 'próximo sabado'. Ej: 2026-03-25."},
-                                    "time": {"type": "string", "description": "HORA OBLIGATORIA EN FORMATO HH:MM:SS (24 horas). Ej: 15:30:00."},
-                                    "client_name": {"type": "string", "description": "Nombre proporcionado por el usuario o vacío ''."},
-                                    "client_phone": {"type": "string", "description": "Teléfono proporcionado por el usuario o vacío ''."}
+                                    "listing_id": {"type": "string", "description": "ID del inmueble a visitar. OBLIGATORIO: DEBE ser un STRING."},
+                                    "date": {"type": "string", "description": "FECHA OBLIGATORIA EN FORMATO TÉCNICO YYYY-MM-DD. Ej: 2026-03-25."},
+                                    "time": {"type": "string", "description": "HORA OBLIGATORIA EN FORMATO HH:MM:SS (24 horas). Ej: 15:30:00."}
                                 },
-                                "required": ["listing_id", "date", "time", "client_name", "client_phone"]
+                                "required": ["listing_id", "date", "time"]
                             }
                         }
                     },
-                    "required": ["appointments"]
+                    "required": ["client_name", "client_email", "client_phone", "appointments"]
                 }
             },
             {

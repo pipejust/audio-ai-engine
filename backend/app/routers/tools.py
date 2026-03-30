@@ -41,6 +41,10 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         max_price_numerics = re.findall(r"\d+", max_price_str.replace(".", "").replace(",", ""))
         max_price_val = int("".join(max_price_numerics)) if max_price_numerics else 100000000000
         
+        min_price_str = str(args.get("min_price", "0"))
+        min_price_numerics = re.findall(r"\d+", min_price_str.replace(".", "").replace(",", ""))
+        min_price_val = int("".join(min_price_numerics)) if min_price_numerics else 0
+        
         search_query = f"propiedades disponibles inmueble"
         if tipo.lower() != "any": search_query += f" tipo {tipo}"
         if location.lower() != "any": search_query += f" en {location}"
@@ -94,8 +98,10 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             numerics = re.findall(r"\d+", price_str.replace(".", ""))
             precio_int = int(numerics[0]) if numerics else 0
             
-            # Filtro Matemático de Presupuesto (Tolerancia del 15% para no ser tan cortantes)
+            # Filtro Matemático de Presupuesto (Tolerancia extendida del 15% para suavizar bordes)
             if max_price_val < 100000000000 and precio_int > (max_price_val * 1.15):
+                continue
+            if min_price_val > 0 and precio_int < (min_price_val * 0.85):
                 continue
             
             prop_id = d.metadata.get("property_id", "")

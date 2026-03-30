@@ -264,13 +264,6 @@ class OpenAIRealtimeManager:
                             if getattr(self, "tool_in_progress", False):
                                 print("⚠️ Backend IGNORÓ el commit porque hay una búsqueda/tool en progreso.")
                                 continue
-                            
-                            # Cooldown Anti-Echo: Ignoramos commits físicos si la IA está generando audio, 
-                            # o si terminó de generarlo hace menos de 1.5 segundos (tiempo de viaje + reproducción del frontend).
-                            time_since_ai_spoke = time.time() - getattr(self, "last_ai_speech_time", 0)
-                            if getattr(self, "response_in_progress", False) or time_since_ai_spoke < 1.5:
-                                print(f"⚠️ Backend IGNORÓ el commit por Cooldown Anti-Eco (IA hablando o terminó hace {time_since_ai_spoke:.1f}s).")
-                                continue
                                 
                             if not getattr(self, "has_uncommitted_audio", False):
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS fue muy bajo).")

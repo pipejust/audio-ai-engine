@@ -230,11 +230,35 @@ class OpenAIRealtimeManager:
                             cancel_event = {"type": "response.cancel"}
                             await openai_ws.send(json.dumps(cancel_event))
                         elif data.get("type") == "input_audio_buffer.append":
-                            append_event = {
-                                "type": "input_audio_buffer.append",
-                                "audio": data.get("audio", "")
-                            }
-                            await openai_ws.send(json.dumps(append_event))
+                            audio_b64 = data.get("audio", "")
+                            
+                            if audio_b64:
+                                import base64
+                                import math
+                                import struct
+                                
+                                raw_pcm = base64.b64decode(audio_b64)
+                                count = len(raw_pcm) // 2
+                                if count > 0:
+                                    clean_pcm = raw_pcm[:count*2]
+                                    shorts = struct.unpack(f"<{count}h", clean_pcm)
+                                    rms = math.sqrt(sum(s*s for s in shorts) / count)
+                                else:
+                                    rms = 0
+                                    
+                                if rms >= 10:
+                                    print(f"🎤 RMS entrante (JSON): {rms:.0f}")
+                                    
+                                if rms < 350:
+                                    continue
+                                
+                                append_event = {
+                                    "type": "input_audio_buffer.append",
+                                    "audio": audio_b64
+                                }
+                                await openai_ws.send(json.dumps(append_event))
+                                self.has_uncommitted_audio = True
+                                self.last_audio_received_time = time.time()
                         elif data.get("type") == "input_audio_buffer.commit":
                             print("📥 FRONTEND WS JSON: input_audio_buffer.commit")
                             if not getattr(self, "has_uncommitted_audio", False):

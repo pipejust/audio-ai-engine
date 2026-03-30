@@ -114,8 +114,13 @@ class OpenAIRealtimeManager:
                     "session": {
                         "instructions": instructions,
                         "voice": safe_voice_id,
-                        # Desactivamos server_vad porque nuestro Frontend ya hace el VAD y enruta audio en bloques
-                        "turn_detection": None,
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.6,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 600,
+                            "create_response": True
+                        },
                         "input_audio_transcription": {
                             "model": "whisper-1"
                         },
@@ -228,10 +233,9 @@ class OpenAIRealtimeManager:
                         }
                         await openai_ws.send(json.dumps(append_event))
                         
-                        # Como el frontend envía blobs completos, forzamos a OpenAI a procesar y responder de inmediato
+                        # Ya NO forzamos una respuesta inmediata (para evitar que se dispare con ruido de fondo).
+                        # Dejamos que el Server VAD de OpenAI (o el frontend explícito) decida cuándo crear el response.
                         await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
-                        await openai_ws.send(json.dumps({"type": "response.create"}))
                         
                     except Exception as e:
                         print(f"Error parseando WebM chunk: {e}")
@@ -269,6 +273,7 @@ class OpenAIRealtimeManager:
         try:
             self.response_in_progress = False
             should_close_ws = False
+            current_bot_audio_buffer = bytearray()
             
             while True:
                 message = await openai_ws.recv()
@@ -302,12 +307,18 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
-                    # Send raw PCM16 base64 decoded bytes directly to the frontend for instant playback
+                    # Buffer the raw PCM16 bytes instead of sending each 20ms chunk individually
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    wav_chunk = create_wav_header(pcm_bytes)
-                    await client_ws.send_bytes(wav_chunk)
+                    current_bot_audio_buffer.extend(pcm_bytes)
                 
+                elif event["type"] == "response.audio.done":
+                    # Emit one single continuous WAV file when the AI finishes speaking the phrase
+                    if len(current_bot_audio_buffer) > 0:
+                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
+                        await client_ws.send_bytes(wav_file)
+                        current_bot_audio_buffer.clear()
+                        
                 elif event["type"] == "response.audio_transcript.delta":
                     transcript_delta = event.get("delta", "")
                     if transcript_delta:

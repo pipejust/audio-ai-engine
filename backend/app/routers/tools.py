@@ -77,8 +77,15 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 meta_loc = normalize_str(d.metadata.get("location_search", ""))
                 meta_type = normalize_str(d.metadata.get("property_type", ""))
                 
-                if loc_norm and loc_norm not in meta_loc and loc_norm not in page_norm:
-                    continue
+                if loc_norm:
+                    valid_location = True
+                    loc_terms = [t.strip() for t in loc_norm.replace(",", " ").split() if t.strip()]
+                    for term in loc_terms:
+                        if term not in meta_loc and term not in page_norm:
+                            valid_location = False
+                            break
+                    if not valid_location:
+                        continue
                 if type_norm and type_norm not in meta_type and type_norm not in page_norm:
                     continue
                     

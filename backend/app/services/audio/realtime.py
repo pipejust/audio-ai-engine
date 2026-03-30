@@ -116,9 +116,9 @@ class OpenAIRealtimeManager:
                         "voice": safe_voice_id,
                         "turn_detection": {
                             "type": "server_vad",
-                            "threshold": 0.6,
+                            "threshold": 0.85,
                             "prefix_padding_ms": 300,
-                            "silence_duration_ms": 600,
+                            "silence_duration_ms": 700,
                             "create_response": True
                         },
                         "input_audio_transcription": {
@@ -145,7 +145,10 @@ class OpenAIRealtimeManager:
                     
                 if voice_id == "shimmer" or voice_id == "nova":
                     bot_name = "Isabella"
-                    
+                
+                # Instrucción de rechazo activo de ruido
+                instructions += "\n\n[DIRECTIVA DE CANCELACIÓN DE RUIDO]\nEs probable que escuches ruidos de fondo, teclados, respiraciones, golpes o estática. SI EL AUDIO ES SOLO RUIDO, ININTELIGIBLE O NO CONTIENE UNA PREGUNTA DIRIGIDA A TI CLARAMENTE ARTICULADA, GUARDA SILENCIO ABSOLUTO (ignóralo sin decir absolutamente nada). JAMÁS digas 'No te pude oír bien' o '¿Puedes repetir?' a menos que el usuario haya estado activamente en medio de una conversación continua y se haya cortado. Sé inmune al ambiente ininteligible."
+                
                 greeting_text = f"Hola, soy {bot_name} de {company_name_ov}. ¿En qué puedo ayudarte?"
                 
                 greeting_event = {
@@ -291,11 +294,9 @@ class OpenAIRealtimeManager:
                             pass
                         return
                 
-                # REPORTE DE DEPURACIÓN HACIA EL CLIENTE
-                try:
-                    await client_ws.send_text(json.dumps({"status": "debug_openai", "event_type": event["type"]}))
-                except Exception:
-                    pass
+                # ELIMINADO: debug_openai spam text_events because blasting 40 text JSONs per second to the Frontend React App 
+                # overloads the main UI thread during `response.audio.delta`, starving the HTML5 <audio> component 
+                # and producing severe underrun clipping (sounding like a background typewriter "golpeteo de teclado").
                     
                 # DEBUG: Imprimir mensajes ignorados para ver si OpenAI está tirando errores silenciosos
                 if event["type"] not in ["response.audio.delta", "response.audio_transcript.delta"]:

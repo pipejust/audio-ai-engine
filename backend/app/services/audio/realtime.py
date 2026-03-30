@@ -264,6 +264,14 @@ class OpenAIRealtimeManager:
                             if getattr(self, "tool_in_progress", False):
                                 print("⚠️ Backend IGNORÓ el commit porque hay una búsqueda/tool en progreso.")
                                 continue
+                            
+                            # Cooldown Anti-Echo: Ignoramos commits físicos si la IA está generando audio, 
+                            # o si terminó de generarlo hace menos de 1.5 segundos (tiempo de viaje + reproducción del frontend).
+                            time_since_ai_spoke = time.time() - getattr(self, "last_ai_speech_time", 0)
+                            if getattr(self, "response_in_progress", False) or time_since_ai_spoke < 1.5:
+                                print(f"⚠️ Backend IGNORÓ el commit por Cooldown Anti-Eco (IA hablando o terminó hace {time_since_ai_spoke:.1f}s).")
+                                continue
+                                
                             if not getattr(self, "has_uncommitted_audio", False):
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS fue muy bajo).")
                                 continue
@@ -387,6 +395,9 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
+                    # Actualizamos el reloj para el Cooldown Anti-Eco del servidor
+                    self.last_ai_speech_time = time.time()
+                    
                     # Dynamic Phrase-Pacing: Acumulamos el PCM hasta alcanzar naturalmente el tamaño orgánico
                     # de una oración (marcada por los deltas de texto transcrito), para camuflar los "clics" de React.
                     audio_b64 = event["delta"]
@@ -441,12 +452,17 @@ class OpenAIRealtimeManager:
                             "gracias", "subtítulos", "amén", "gracias por ver", "suscríbete", 
                             "thank you", "thanks", "subtitles", "you", "oh", "ah", 
                             "mbc 뉴스 이덕영입니다", "mbc 뉴스", 
-                            "are you speaking english", # Esto pasó porque el modelo de hecho escuchó su propio saludo de inicio debido a que el audio escapó de los altavoces al mic
+                            "are you speaking english",
                             "sí", "no", ".", "ok", "bueno", "ya", "ah", "eh", "hm"
                         ]
                         
-                        # Si es muy corto o es una alucinación, le pedimos a OpenAI que borre ese turno para detener el bucle
-                        if len(clean_text) <= 1 or clean_text in hallucinations:
+                        is_echo = False
+                        for phrase in ["sol de busco", "soy sol de", "sueldo el disco", "sondevos", "sol de moscu", "sol de moscú"]:
+                            if phrase in clean_text:
+                                is_echo = True
+                        
+                        # Si es muy corto, es una alucinación conocida, o contiene rastro de eco de la propia IA, cancelamos el turno.
+                        if len(clean_text) <= 1 or clean_text in hallucinations or is_echo:
                             print(f"🛑 Cancelando Alucinación/Eco en OpenAI: {transcript}")
                             # Nota: borramos la transcripción engañosa del contexto de la IA
                             try:

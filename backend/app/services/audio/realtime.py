@@ -114,13 +114,8 @@ class OpenAIRealtimeManager:
                     "session": {
                         "instructions": instructions,
                         "voice": safe_voice_id,
-                        "turn_detection": {
-                            "type": "server_vad",
-                            "threshold": 0.85,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": 700,
-                            "create_response": True
-                        },
+                        # Desactivamos server_vad para cederle el control absoluto al VAD calado en el Frontend Javascript
+                        "turn_detection": None,
                         "input_audio_transcription": {
                             "model": "whisper-1"
                         },
@@ -189,10 +184,30 @@ class OpenAIRealtimeManager:
             print(f"❌ Error conectando con OpenAI: {e}")
 
     async def stream_client_to_openai(self, client_ws: WebSocket, openai_ws):
-        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI"""
+        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI. Usa un Timeout Debounce para crear iteraciones solas."""
         import base64
         import io
+        import time
         from pydub import AudioSegment
+        
+        self.last_audio_received_time = time.time()
+        self.has_uncommitted_audio = False
+        
+        async def check_silence():
+            while True:
+                await asyncio.sleep(0.5)
+                # Si han pasado más de 1.2 segundos desde el último chunk y tenemos audio pendiente, cerramos la frase!
+                if self.has_uncommitted_audio and (time.time() - self.last_audio_received_time) > 1.2:
+                    try:
+                        self.has_uncommitted_audio = False
+                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
+                        await openai_ws.send(json.dumps({"type": "response.create"}))
+                    except Exception:
+                        pass
+                        
+        silence_task = asyncio.create_task(check_silence())
+
         try:
             while True:
                 # Permite recibir comandos y audio en base64 via JSON
@@ -236,9 +251,9 @@ class OpenAIRealtimeManager:
                         }
                         await openai_ws.send(json.dumps(append_event))
                         
-                        # Ya NO forzamos una respuesta inmediata (para evitar que se dispare con ruido de fondo).
-                        # Dejamos que el Server VAD de OpenAI (o el frontend explícito) decida cuándo crear el response.
-                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                        # Actualizamos el tracker de VAD Activo del Backend
+                        self.last_audio_received_time = time.time()
+                        self.has_uncommitted_audio = True
                         
                     except Exception as e:
                         print(f"Error parseando WebM chunk: {e}")
@@ -246,10 +261,12 @@ class OpenAIRealtimeManager:
 
         except WebSocketDisconnect:
             print("🔌 Cliente se desconectó de la Opción B.")
+            silence_task.cancel()
         except Exception as e:
             import traceback
             err_str = traceback.format_exc()
             print(f"❌ Error procesando audio del cliente: {err_str}")
+            silence_task.cancel()
             try:
                 await client_ws.send_text(json.dumps({"status": "error", "message": f"ClientStream Task Crash: {e}"}))
             except:
@@ -308,18 +325,12 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
-                    # Buffer the raw PCM16 bytes instead of sending each 20ms chunk individually
+                    # Restoring instantaneous micro-batch streaming to eliminate the 4-second phrase assembly latency
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    current_bot_audio_buffer.extend(pcm_bytes)
+                    wav_chunk = create_wav_header(pcm_bytes)
+                    await client_ws.send_bytes(wav_chunk)
                 
-                elif event["type"] == "response.audio.done":
-                    # Emit one single continuous WAV file when the AI finishes speaking the phrase
-                    if len(current_bot_audio_buffer) > 0:
-                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
-                        await client_ws.send_bytes(wav_file)
-                        current_bot_audio_buffer.clear()
-                        
                 elif event["type"] == "response.audio_transcript.delta":
                     transcript_delta = event.get("delta", "")
                     if transcript_delta:

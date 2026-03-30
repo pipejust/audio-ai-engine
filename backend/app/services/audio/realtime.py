@@ -515,6 +515,12 @@ class OpenAIRealtimeManager:
                 args["client_email"] = client_email
                 args["client_phone"] = client_phone
                 
+            if function_name == "search_properties":
+                try:
+                    await client_ws.send_text(json.dumps({"status": "action", "action": "loading_search"}))
+                except Exception:
+                    pass
+                
             tool_req = ToolRequest(project_id=project_id, args=args)
             
             class MockState:

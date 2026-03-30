@@ -294,8 +294,7 @@ class OpenAIRealtimeManager:
             self.response_in_progress = False
             should_close_ws = False
             current_bot_audio_buffer = bytearray()
-            current_bot_audio_buffer = bytearray()
-            current_bot_audio_buffer = bytearray()
+            bytes_target_flush = 0
             
             while True:
                 message = await openai_ws.recv()
@@ -327,22 +326,36 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
-                    # Re-buffer in backend: Send one solid WAV frame to eliminate rigid DOM baseline clicking.
+                    # Dynamic Phrase-Pacing: Acumulamos el PCM hasta alcanzar naturalmente el tamaño orgánico
+                    # de una oración (marcada por los deltas de texto transcrito), para camuflar los "clics" de React.
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
                     current_bot_audio_buffer.extend(pcm_bytes)
+                    
+                    # Si cruzamos la meta matemática del Delay post-puntuación, O superamos 2 segundos límite (96000), disparamos:
+                    if (bytes_target_flush > 0 and len(current_bot_audio_buffer) >= bytes_target_flush) or len(current_bot_audio_buffer) >= 96000:
+                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
+                        await client_ws.send_bytes(wav_file)
+                        current_bot_audio_buffer.clear()
+                        bytes_target_flush = 0
                 
                 elif event["type"] == "response.audio.done":
-                    # Emite un solo archivo continuo para el frame DOM HTML5
+                    # Emite el audio residual (la última palabra antes de que la IA suelte el micrófono)
                     if len(current_bot_audio_buffer) > 0:
                         wav_file = create_wav_header(bytes(current_bot_audio_buffer))
                         await client_ws.send_bytes(wav_file)
                         current_bot_audio_buffer.clear()
+                        bytes_target_flush = 0
                         
                 elif event["type"] == "response.audio_transcript.delta":
-                    # SILENCE. Do not send raw transcript deltas. Blazing 40 chat payloads per second to React
-                    # blocks the UI thread and physically causes the audio clicking/typing "golpeteo" sound.
-                    pass
+                    transcript_delta = event.get("delta", "")
+                    if transcript_delta:
+                        # Si detectamos puntuación lingüística, ordenamos al buffer de audio esperar ~0.5 segundos 
+                        # de decodificación (24000 bytes) antes de inyectar el salto de WAV para que caiga en el "silencio de respiración".
+                        if any(p in transcript_delta for p in [".", ",", "?", "!", "\n"]):
+                            # Solo marcamos un nuevo punto de corte si no había ya uno inminente.
+                            if bytes_target_flush == 0:
+                                bytes_target_flush = len(current_bot_audio_buffer) + 24000
                 
                 elif event["type"] == "response.audio_transcript.done":
                     transcript = event["transcript"]

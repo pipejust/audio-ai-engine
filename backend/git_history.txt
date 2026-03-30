@@ -1,0 +1,1174 @@
+commit fe441ce8b9ca89092ecf48e85e8ce57d9c817245
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 19:57:30 2026 -0500
+
+    fix(audio): intercept double commit crashes by purging 0 bytes api push, abort midstream llm to fix already_has_active_response loop, and re-arm html5 generic dom unbuffered chunks
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 1fd3dca..c59c7de 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -114,13 +114,7 @@ class OpenAIRealtimeManager:
+                     "session": {
+                         "instructions": instructions,
+                         "voice": safe_voice_id,
+-                        "turn_detection": {
+-                            "type": "server_vad",
+-                            "threshold": 0.8,
+-                            "prefix_padding_ms": 300,
+-                            "silence_duration_ms": 600,
+-                            "create_response": True
+-                        },
++                        "turn_detection": None,
+                         "input_audio_transcription": {
+                             "model": "whisper-1"
+                         },
+@@ -217,7 +211,16 @@ class OpenAIRealtimeManager:
+                             }
+                             await openai_ws.send(json.dumps(append_event))
+                         elif data.get("type") == "input_audio_buffer.commit":
++                            if not getattr(self, "has_uncommitted_audio", False):
++                                # El VAD del frontend detectó silencios pero el backend RMS dropeó todo (0 bytes a OpenAI). No podemos hacer commit o la API crasheará por Empty Buffer.
++                                continue
++                            
++                            if getattr(self, "response_in_progress", False):
++                                await openai_ws.send(json.dumps({"type": "response.cancel"}))
++                                self.response_in_progress = False
++                            
+                             await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
++                            self.has_uncommitted_audio = False
+                             await client_ws.send_text(json.dumps({"status": "reasoning"}))
+                             await openai_ws.send(json.dumps({"type": "response.create"}))
+                     except Exception as e:
+@@ -243,8 +246,8 @@ class OpenAIRealtimeManager:
+                         else:
+                             rms = 0
+                             
+-                        if rms < 1000:
+-                            # Ignorar silencios, ruidos de fondo, respiraciones y ecos de parlante de la propia IA. (Threshold ultra-estricto)
++                        if rms < 500:
++                            # Ignorar silencios, ruidos de fondo, respiraciones y ecos de parlante de la propia IA.
+                             continue
+                         
+                         append_event = {
+@@ -252,6 +255,7 @@ class OpenAIRealtimeManager:
+                             "audio": base64.b64encode(raw_pcm).decode("utf-8")
+                         }
+                         await openai_ws.send(json.dumps(append_event))
++                        self.has_uncommitted_audio = True
+                         
+                     except Exception as e:
+                         print(f"Error parseando WebM chunk: {e}")
+@@ -291,6 +295,7 @@ class OpenAIRealtimeManager:
+             should_close_ws = False
+             current_bot_audio_buffer = bytearray()
+             current_bot_audio_buffer = bytearray()
++            current_bot_audio_buffer = bytearray()
+             
+             while True:
+                 message = await openai_ws.recv()
+@@ -322,12 +327,18 @@ class OpenAIRealtimeManager:
+                         }))
+                 
+                 if event["type"] == "response.audio.delta":
+-                    # Restore ultra-low 0ms latency. The React clicking is eradicated by purging the text JSON deltas.
++                    # Re-buffer in backend: Send one solid WAV frame to eliminate rigid DOM baseline clicking.
+                     audio_b64 = event["delta"]
+                     pcm_bytes = base64.b64decode(audio_b64)
+-                    wav_chunk = create_wav_header(pcm_bytes)
+-                    await client_ws.send_bytes(wav_chunk)
+-                
++                    current_bot_audio_buffer.extend(pcm_bytes)
++                
++                elif event["type"] == "response.audio.done":
++                    # Emite un solo archivo continuo para el frame DOM HTML5
++                    if len(current_bot_audio_buffer) > 0:
++                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
++                        await client_ws.send_bytes(wav_file)
++                        current_bot_audio_buffer.clear()
++                        
+                 elif event["type"] == "response.audio_transcript.delta":
+                     # SILENCE. Do not send raw transcript deltas. Blazing 40 chat payloads per second to React
+                     # blocks the UI thread and physically causes the audio clicking/typing "golpeteo" sound.
+
+commit c77281bfeaf3ace08efb6092c596202428cd34f1
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 19:38:25 2026 -0500
+
+    fix(audio): silence ui transcript json blasts to cure physical audio ticking, raise rms threshold>1000 to drop ambient hallucinations entirely, restore zero-latency native pcm chunks, and re-arm server_vad to enable mid-speech user interruption
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 1ec9d40..1fd3dca 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -114,8 +114,13 @@ class OpenAIRealtimeManager:
+                     "session": {
+                         "instructions": instructions,
+                         "voice": safe_voice_id,
+-                        # Desactivamos server_vad para cederle el control absoluto al VAD calado en el Frontend Javascript
+-                        "turn_detection": None,
++                        "turn_detection": {
++                            "type": "server_vad",
++                            "threshold": 0.8,
++                            "prefix_padding_ms": 300,
++                            "silence_duration_ms": 600,
++                            "create_response": True
++                        },
+                         "input_audio_transcription": {
+                             "model": "whisper-1"
+                         },
+@@ -184,29 +189,11 @@ class OpenAIRealtimeManager:
+             print(f"❌ Error conectando con OpenAI: {e}")
+ 
+     async def stream_client_to_openai(self, client_ws: WebSocket, openai_ws):
+-        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI. Usa un Timeout Debounce para crear iteraciones solas."""
++        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI. Bloquea el ruido ambiente con RMS."""
+         import base64
+         import io
+         import time
+         from pydub import AudioSegment
+-        
+-        self.last_audio_received_time = time.time()
+-        self.has_uncommitted_audio = False
+-        
+-        async def check_silence():
+-            while True:
+-                await asyncio.sleep(0.5)
+-                # Si han pasado más de 1.2 segundos desde el último chunk y tenemos audio pendiente, cerramos la frase!
+-                if self.has_uncommitted_audio and (time.time() - self.last_audio_received_time) > 1.2:
+-                    try:
+-                        self.has_uncommitted_audio = False
+-                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+-                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
+-                        await openai_ws.send(json.dumps({"type": "response.create"}))
+-                    except Exception:
+-                        pass
+-                        
+-        silence_task = asyncio.create_task(check_silence())
+ 
+         try:
+             while True:
+@@ -256,8 +243,8 @@ class OpenAIRealtimeManager:
+                         else:
+                             rms = 0
+                             
+-                        if rms < 400:
+-                            # Ignorar silencios absolutos o ruidos muy bajos, no saturar a Whisper ni retrasar el VAD Backend
++                        if rms < 1000:
++                            # Ignorar silencios, ruidos de fondo, respiraciones y ecos de parlante de la propia IA. (Threshold ultra-estricto)
+                             continue
+                         
+                         append_event = {
+@@ -266,22 +253,16 @@ class OpenAIRealtimeManager:
+                         }
+                         await openai_ws.send(json.dumps(append_event))
+                         
+-                        # Actualizamos el tracker de VAD Activo del Backend (Solo se actualiza con voz real, RMS > 400)
+-                        self.last_audio_received_time = time.time()
+-                        self.has_uncommitted_audio = True
+-                        
+                     except Exception as e:
+                         print(f"Error parseando WebM chunk: {e}")
+                     continue
+ 
+         except WebSocketDisconnect:
+             print("🔌 Cliente se desconectó de la Opción B.")
+-            silence_task.cancel()
+         except Exception as e:
+             import traceback
+             err_str = traceback.format_exc()
+             print(f"❌ Error procesando audio del cliente: {err_str}")
+-            silence_task.cancel()
+             try:
+                 await client_ws.send_text(json.dumps({"status": "error", "message": f"ClientStream Task Crash: {e}"}))
+             except:
+@@ -341,22 +322,16 @@ class OpenAIRealtimeManager:
+                         }))
+                 
+                 if event["type"] == "response.audio.delta":
+-                    # Re-buffer in backend: Send one solid WAV frame to eliminate DOM clicking.
++                    # Restore ultra-low 0ms latency. The React clicking is eradicated by purging the text JSON deltas.
+                     audio_b64 = event["delta"]
+                     pcm_bytes = base64.b64decode(audio_b64)
+-                    current_bot_audio_buffer.extend(pcm_bytes)
+-                
+-                elif event["type"] == "response.audio.done":
+-                    # Emite un solo archivo continuo para el DOM
+-                    if len(current_bot_audio_buffer) > 0:
+-                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
+-                        await client_ws.send_bytes(wav_file)
+-                        current_bot_audio_buffer.clear()
+-                        
++                    wav_chunk = create_wav_header(pcm_bytes)
++                    await client_ws.send_bytes(wav_chunk)
++                
+                 elif event["type"] == "response.audio_transcript.delta":
+-                    transcript_delta = event.get("delta", "")
+-                    if transcript_delta:
+-                        await client_ws.send_text(json.dumps({"status": "listening_delta", "delta": transcript_delta}))
++                    # SILENCE. Do not send raw transcript deltas. Blazing 40 chat payloads per second to React
++                    # blocks the UI thread and physically causes the audio clicking/typing "golpeteo" sound.
++                    pass
+                 
+                 elif event["type"] == "response.audio_transcript.done":
+                     transcript = event["transcript"]
+
+commit 34e2427c58aadadc3fadd5ff97ae0d1bd3d69848
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 19:27:37 2026 -0500
+
+    fix(audio): purge whisper silence hallucinations using programmatic rms amplitude decibel gates, and restore complete 4s buffer to block html5 dom generic decoding collisions
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 0f092d9..1ec9d40 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -245,13 +245,28 @@ class OpenAIRealtimeManager:
+                         # Exportar a PCM16 (raw) a 24000Hz mono, formato esperado por OpenAI
+                         raw_pcm = audio_segment.set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
+                         
++                        import math
++                        import struct
++                        count = len(raw_pcm) // 2
++                        if count > 0:
++                            clean_pcm_bytes = raw_pcm[:count*2]
++                            shorts = struct.unpack(f"<{count}h", clean_pcm_bytes)
++                            sum_squares = sum(s * s for s in shorts)
++                            rms = math.sqrt(sum_squares / count)
++                        else:
++                            rms = 0
++                            
++                        if rms < 400:
++                            # Ignorar silencios absolutos o ruidos muy bajos, no saturar a Whisper ni retrasar el VAD Backend
++                            continue
++                        
+                         append_event = {
+                             "type": "input_audio_buffer.append",
+                             "audio": base64.b64encode(raw_pcm).decode("utf-8")
+                         }
+                         await openai_ws.send(json.dumps(append_event))
+                         
+-                        # Actualizamos el tracker de VAD Activo del Backend
++                        # Actualizamos el tracker de VAD Activo del Backend (Solo se actualiza con voz real, RMS > 400)
+                         self.last_audio_received_time = time.time()
+                         self.has_uncommitted_audio = True
+                         
+@@ -294,6 +309,7 @@ class OpenAIRealtimeManager:
+             self.response_in_progress = False
+             should_close_ws = False
+             current_bot_audio_buffer = bytearray()
++            current_bot_audio_buffer = bytearray()
+             
+             while True:
+                 message = await openai_ws.recv()
+@@ -325,12 +341,18 @@ class OpenAIRealtimeManager:
+                         }))
+                 
+                 if event["type"] == "response.audio.delta":
+-                    # Restoring instantaneous micro-batch streaming to eliminate the 4-second phrase assembly latency
++                    # Re-buffer in backend: Send one solid WAV frame to eliminate DOM clicking.
+                     audio_b64 = event["delta"]
+                     pcm_bytes = base64.b64decode(audio_b64)
+-                    wav_chunk = create_wav_header(pcm_bytes)
+-                    await client_ws.send_bytes(wav_chunk)
+-                
++                    current_bot_audio_buffer.extend(pcm_bytes)
++                
++                elif event["type"] == "response.audio.done":
++                    # Emite un solo archivo continuo para el DOM
++                    if len(current_bot_audio_buffer) > 0:
++                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
++                        await client_ws.send_bytes(wav_file)
++                        current_bot_audio_buffer.clear()
++                        
+                 elif event["type"] == "response.audio_transcript.delta":
+                     transcript_delta = event.get("delta", "")
+                     if transcript_delta:
+
+commit 1995b12027a45012df5cfb0d027183f733f96d24
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 19:14:07 2026 -0500
+
+    fix(audio): strip 4s latency buffer by restoring pcm instantaneous chunks and replace openai native vad with backend 1.2s debounce tracked over frontend webm frame sequences
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 8e46cd3..0f092d9 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -114,13 +114,8 @@ class OpenAIRealtimeManager:
+                     "session": {
+                         "instructions": instructions,
+                         "voice": safe_voice_id,
+-                        "turn_detection": {
+-                            "type": "server_vad",
+-                            "threshold": 0.85,
+-                            "prefix_padding_ms": 300,
+-                            "silence_duration_ms": 700,
+-                            "create_response": True
+-                        },
++                        # Desactivamos server_vad para cederle el control absoluto al VAD calado en el Frontend Javascript
++                        "turn_detection": None,
+                         "input_audio_transcription": {
+                             "model": "whisper-1"
+                         },
+@@ -189,10 +184,30 @@ class OpenAIRealtimeManager:
+             print(f"❌ Error conectando con OpenAI: {e}")
+ 
+     async def stream_client_to_openai(self, client_ws: WebSocket, openai_ws):
+-        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI"""
++        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI. Usa un Timeout Debounce para crear iteraciones solas."""
+         import base64
+         import io
++        import time
+         from pydub import AudioSegment
++        
++        self.last_audio_received_time = time.time()
++        self.has_uncommitted_audio = False
++        
++        async def check_silence():
++            while True:
++                await asyncio.sleep(0.5)
++                # Si han pasado más de 1.2 segundos desde el último chunk y tenemos audio pendiente, cerramos la frase!
++                if self.has_uncommitted_audio and (time.time() - self.last_audio_received_time) > 1.2:
++                    try:
++                        self.has_uncommitted_audio = False
++                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
++                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
++                        await openai_ws.send(json.dumps({"type": "response.create"}))
++                    except Exception:
++                        pass
++                        
++        silence_task = asyncio.create_task(check_silence())
++
+         try:
+             while True:
+                 # Permite recibir comandos y audio en base64 via JSON
+@@ -236,9 +251,9 @@ class OpenAIRealtimeManager:
+                         }
+                         await openai_ws.send(json.dumps(append_event))
+                         
+-                        # Ya NO forzamos una respuesta inmediata (para evitar que se dispare con ruido de fondo).
+-                        # Dejamos que el Server VAD de OpenAI (o el frontend explícito) decida cuándo crear el response.
+-                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
++                        # Actualizamos el tracker de VAD Activo del Backend
++                        self.last_audio_received_time = time.time()
++                        self.has_uncommitted_audio = True
+                         
+                     except Exception as e:
+                         print(f"Error parseando WebM chunk: {e}")
+@@ -246,10 +261,12 @@ class OpenAIRealtimeManager:
+ 
+         except WebSocketDisconnect:
+             print("🔌 Cliente se desconectó de la Opción B.")
++            silence_task.cancel()
+         except Exception as e:
+             import traceback
+             err_str = traceback.format_exc()
+             print(f"❌ Error procesando audio del cliente: {err_str}")
++            silence_task.cancel()
+             try:
+                 await client_ws.send_text(json.dumps({"status": "error", "message": f"ClientStream Task Crash: {e}"}))
+             except:
+@@ -308,18 +325,12 @@ class OpenAIRealtimeManager:
+                         }))
+                 
+                 if event["type"] == "response.audio.delta":
+-                    # Buffer the raw PCM16 bytes instead of sending each 20ms chunk individually
++                    # Restoring instantaneous micro-batch streaming to eliminate the 4-second phrase assembly latency
+                     audio_b64 = event["delta"]
+                     pcm_bytes = base64.b64decode(audio_b64)
+-                    current_bot_audio_buffer.extend(pcm_bytes)
+-                
+-                elif event["type"] == "response.audio.done":
+-                    # Emit one single continuous WAV file when the AI finishes speaking the phrase
+-                    if len(current_bot_audio_buffer) > 0:
+-                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
+-                        await client_ws.send_bytes(wav_file)
+-                        current_bot_audio_buffer.clear()
+-                        
++                    wav_chunk = create_wav_header(pcm_bytes)
++                    await client_ws.send_bytes(wav_chunk)
++                
+                 elif event["type"] == "response.audio_transcript.delta":
+                     transcript_delta = event.get("delta", "")
+                     if transcript_delta:
+
+commit f1aadddf8a932c8a1e508047b46b7416975f7e66
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 19:13:01 2026 -0500
+
+    fix(audio): strip recursive debug telemetry preventing react DOM freezes, and harden openai server vad prompts against ambient noise sensitivity
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index ac92c27..8e46cd3 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -116,9 +116,9 @@ class OpenAIRealtimeManager:
+                         "voice": safe_voice_id,
+                         "turn_detection": {
+                             "type": "server_vad",
+-                            "threshold": 0.6,
++                            "threshold": 0.85,
+                             "prefix_padding_ms": 300,
+-                            "silence_duration_ms": 600,
++                            "silence_duration_ms": 700,
+                             "create_response": True
+                         },
+                         "input_audio_transcription": {
+@@ -145,7 +145,10 @@ class OpenAIRealtimeManager:
+                     
+                 if voice_id == "shimmer" or voice_id == "nova":
+                     bot_name = "Isabella"
+-                    
++                
++                # Instrucción de rechazo activo de ruido
++                instructions += "\n\n[DIRECTIVA DE CANCELACIÓN DE RUIDO]\nEs probable que escuches ruidos de fondo, teclados, respiraciones, golpes o estática. SI EL AUDIO ES SOLO RUIDO, ININTELIGIBLE O NO CONTIENE UNA PREGUNTA DIRIGIDA A TI CLARAMENTE ARTICULADA, GUARDA SILENCIO ABSOLUTO (ignóralo sin decir absolutamente nada). JAMÁS digas 'No te pude oír bien' o '¿Puedes repetir?' a menos que el usuario haya estado activamente en medio de una conversación continua y se haya cortado. Sé inmune al ambiente ininteligible."
++                
+                 greeting_text = f"Hola, soy {bot_name} de {company_name_ov}. ¿En qué puedo ayudarte?"
+                 
+                 greeting_event = {
+@@ -291,11 +294,9 @@ class OpenAIRealtimeManager:
+                             pass
+                         return
+                 
+-                # REPORTE DE DEPURACIÓN HACIA EL CLIENTE
+-                try:
+-                    await client_ws.send_text(json.dumps({"status": "debug_openai", "event_type": event["type"]}))
+-                except Exception:
+-                    pass
++                # ELIMINADO: debug_openai spam text_events because blasting 40 text JSONs per second to the Frontend React App 
++                # overloads the main UI thread during `response.audio.delta`, starving the HTML5 <audio> component 
++                # and producing severe underrun clipping (sounding like a background typewriter "golpeteo de teclado").
+                     
+                 # DEBUG: Imprimir mensajes ignorados para ver si OpenAI está tirando errores silenciosos
+                 if event["type"] not in ["response.audio.delta", "response.audio_transcript.delta"]:
+
+commit 18611cf6b71bcbcab9fc3602e708dd18d707d8b5
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 19:02:19 2026 -0500
+
+    fix(audio): buffer AI PCM16 streams into contiguous WAV payloads to eliminate DOM chunk clicking, and enforce Server VAD to suppress microphone environmental noise
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index a63a81b..ac92c27 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -114,8 +114,13 @@ class OpenAIRealtimeManager:
+                     "session": {
+                         "instructions": instructions,
+                         "voice": safe_voice_id,
+-                        # Desactivamos server_vad porque nuestro Frontend ya hace el VAD y enruta audio en bloques
+-                        "turn_detection": None,
++                        "turn_detection": {
++                            "type": "server_vad",
++                            "threshold": 0.6,
++                            "prefix_padding_ms": 300,
++                            "silence_duration_ms": 600,
++                            "create_response": True
++                        },
+                         "input_audio_transcription": {
+                             "model": "whisper-1"
+                         },
+@@ -228,10 +233,9 @@ class OpenAIRealtimeManager:
+                         }
+                         await openai_ws.send(json.dumps(append_event))
+                         
+-                        # Como el frontend envía blobs completos, forzamos a OpenAI a procesar y responder de inmediato
++                        # Ya NO forzamos una respuesta inmediata (para evitar que se dispare con ruido de fondo).
++                        # Dejamos que el Server VAD de OpenAI (o el frontend explícito) decida cuándo crear el response.
+                         await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+-                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
+-                        await openai_ws.send(json.dumps({"type": "response.create"}))
+                         
+                     except Exception as e:
+                         print(f"Error parseando WebM chunk: {e}")
+@@ -269,6 +273,7 @@ class OpenAIRealtimeManager:
+         try:
+             self.response_in_progress = False
+             should_close_ws = False
++            current_bot_audio_buffer = bytearray()
+             
+             while True:
+                 message = await openai_ws.recv()
+@@ -302,12 +307,18 @@ class OpenAIRealtimeManager:
+                         }))
+                 
+                 if event["type"] == "response.audio.delta":
+-                    # Send raw PCM16 base64 decoded bytes directly to the frontend for instant playback
++                    # Buffer the raw PCM16 bytes instead of sending each 20ms chunk individually
+                     audio_b64 = event["delta"]
+                     pcm_bytes = base64.b64decode(audio_b64)
+-                    wav_chunk = create_wav_header(pcm_bytes)
+-                    await client_ws.send_bytes(wav_chunk)
++                    current_bot_audio_buffer.extend(pcm_bytes)
+                 
++                elif event["type"] == "response.audio.done":
++                    # Emit one single continuous WAV file when the AI finishes speaking the phrase
++                    if len(current_bot_audio_buffer) > 0:
++                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
++                        await client_ws.send_bytes(wav_file)
++                        current_bot_audio_buffer.clear()
++                        
+                 elif event["type"] == "response.audio_transcript.delta":
+                     transcript_delta = event.get("delta", "")
+                     if transcript_delta:
+
+commit 0797da39270c9d9242694b8e7642184f8c83bd41
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 18:52:20 2026 -0500
+
+    fix(audio): remove conditional local asyncio import causing UnboundLocalError on empty property contexts
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 8ae4418..a63a81b 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -52,7 +52,6 @@ class OpenAIRealtimeManager:
+             if context_listing_ids:
+                 import requests
+                 from app.services.wasi_api import WasiAPI
+-                import asyncio
+                 
+                 wasi = WasiAPI()
+                 
+
+commit 0b1fc1182af84dd396ad6046379d4cd129e9caf3
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 29 18:27:42 2026 -0500
+
+    fix(audio): rollback string PCM16 architecture to legacy WebM binary encoding schema
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 7dc3e68..8ae4418 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -216,7 +216,26 @@ class OpenAIRealtimeManager:
+                     continue
+                 
+                 if message.get("bytes"):
+-                    print("🚨 [CRÍTICO] EL FRONTEND ESTÁ ENVIANDO BLOBS BINARIOS DIRECTOS! Deben enviar JSON con Base64 PCM16 como acordado: {\"type\": \"input_audio_buffer.append\", \"audio\": \"base64...\"}")
++                    audio_webm = message["bytes"]
++                    buf = io.BytesIO(audio_webm)
++                    try:
++                        audio_segment = AudioSegment.from_file(buf)
++                        # Exportar a PCM16 (raw) a 24000Hz mono, formato esperado por OpenAI
++                        raw_pcm = audio_segment.set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
++                        
++                        append_event = {
++                            "type": "input_audio_buffer.append",
++                            "audio": base64.b64encode(raw_pcm).decode("utf-8")
++                        }
++                        await openai_ws.send(json.dumps(append_event))
++                        
++                        # Como el frontend envía blobs completos, forzamos a OpenAI a procesar y responder de inmediato
++                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
++                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
++                        await openai_ws.send(json.dumps({"type": "response.create"}))
++                        
++                    except Exception as e:
++                        print(f"Error parseando WebM chunk: {e}")
+                     continue
+ 
+         except WebSocketDisconnect:
+@@ -287,7 +306,8 @@ class OpenAIRealtimeManager:
+                     # Send raw PCM16 base64 decoded bytes directly to the frontend for instant playback
+                     audio_b64 = event["delta"]
+                     pcm_bytes = base64.b64decode(audio_b64)
+-                    await client_ws.send_bytes(pcm_bytes)
++                    wav_chunk = create_wav_header(pcm_bytes)
++                    await client_ws.send_bytes(wav_chunk)
+                 
+                 elif event["type"] == "response.audio_transcript.delta":
+                     transcript_delta = event.get("delta", "")
+
+commit b78da272252dc3ae564426a1284415838580a5c4
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sat Mar 28 20:54:32 2026 -0500
+
+    fix(audio): scope websocket termination flag locally to stream loop to prevent singleton state pollution across disjoint sessions
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 352ecff..7dc3e68 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -250,6 +250,7 @@ class OpenAIRealtimeManager:
+ 
+         try:
+             self.response_in_progress = False
++            should_close_ws = False
+             
+             while True:
+                 message = await openai_ws.recv()
+@@ -259,7 +260,7 @@ class OpenAIRealtimeManager:
+                     self.response_in_progress = True
+                 elif event["type"] == "response.done":
+                     self.response_in_progress = False
+-                    if getattr(self, "should_close_ws", False):
++                    if should_close_ws:
+                         print("🚪 Cortando WebSocket Activamente (end_call invocado) tras despedida de la IA.")
+                         try:
+                             await client_ws.close(1000)
+@@ -364,7 +365,7 @@ class OpenAIRealtimeManager:
+                         await openai_ws.send(json.dumps({"type": "response.create"}))
+                         
+                         # Señal de Cierre para el interceptor `response.done`
+-                        self.should_close_ws = True
++                        should_close_ws = True
+                         continue
+                         
+                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
+
+commit f56e24348488d6538ade00a7720da3e007f9498e
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sat Mar 28 13:01:07 2026 -0500
+
+    feat(audio): hydrate visual property context concurrently and add graceful websocket teardown on end_call hooks
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 6671878..352ecff 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -47,6 +47,41 @@ class OpenAIRealtimeManager:
+             print(f"⚠️ No se pudo obtener la configuración de voz de la BD: {e}")
+ 
+         try:
++            # 0. Hidratar Contexto Visual desde WASI (Para evitar alucinaciones de IDs)
++            hydrated_mapping_text = ""
++            if context_listing_ids:
++                import requests
++                from app.services.wasi_api import WasiAPI
++                import asyncio
++                
++                wasi = WasiAPI()
++                
++                def fetch_prop(pid):
++                    try:
++                        payload = wasi._get_payload({"id_property": pid})
++                        res = requests.post(f"{wasi.base_url}/property/search", data=payload, headers=wasi._get_headers(), timeout=2.5)
++                        data = res.json()
++                        for v in data.values():
++                            if isinstance(v, dict) and str(v.get("id_property")) == str(pid):
++                                title = v.get("title", "")
++                                sale = int(v.get("sale_price", 0) or 0)
++                                rent = int(v.get("rent_price", 0) or 0)
++                                price_str = f"${sale:,.0f}" if sale > 0 else f"${rent:,.0f}"
++                                return f"ID \"{pid}\" - {title}, Precio: {price_str}"
++                    except Exception as e:
++                        pass
++                    return f"ID \"{pid}\""
++                
++                mapping_lines = []
++                # Hit in parallel thread pool to avoid blocking ASGI loop
++                tasks = [asyncio.to_thread(fetch_prop, pid) for pid in context_listing_ids]
++                results = await asyncio.gather(*tasks)
++                
++                for i, res in enumerate(results):
++                    mapping_lines.append(f"Propiedad {i+1}: {res}")
++                
++                hydrated_mapping_text = "\n".join(mapping_lines)
++                
+             # Conexión persistente hacia OpenAI
+             async with websockets.connect(self.url, additional_headers=headers) as openai_ws:
+                 print("✅ [Opción B] Conectado a OpenAI Realtime API")
+@@ -65,9 +100,8 @@ class OpenAIRealtimeManager:
+                 if client_name or client_email or client_phone:
+                     base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}', su correo es '{client_email}' y su teléfono es '{client_phone}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
+ 
+-                if context_listing_ids:
+-                    mapping_text = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(context_listing_ids)])
+-                    base_instructions += f"\n\n[MAPEO VISUAL EN PANTALLA]:\nEste es el orden cronológico exacto de las casas que el cliente está viendo ahora mismo:\n{mapping_text}\n(Usa estrictamente estos IDs referenciales si el usuario te pide ver 'la primera', 'la 3', 'esa última', etc.)."
++                if hydrated_mapping_text:
++                    base_instructions += f"\n\n[ESTADO ACTUAL EN LA PANTALLA DEL USUARIO]:\nEsta es la lista cronológica de las propiedades que el cliente está viendo ahora mismo:\n{hydrated_mapping_text}\n(Si el usuario te pide ver o agendar la primera propiedad o la número 1, usa SIEMPRE Y OBLIGATORIAMENTE el ID '{context_listing_ids[0]}'). Así tendrás consciencia espacial total de lo que el usuario ve y llamarás tus herramientas con los ALFANUMÉRICOS REALES exactos."
+                 
+                 instructions = base_instructions + "\n\nREGLA CRÍTICA INQUEBRANTABLE SOBRE EL IDIOMA: Por defecto el usuario habla español de Colombia, PERO si el usuario te habla en INGLÉS o en otro idioma, DEBES responderle inmediatamente en ese mismo idioma. NUNCA asumas que el usuario habla en portugués (si escuchas algo que parezca portugués, es una alucinación del sistema de audio y debes ignorarla o asumirla como español/inglés). Nunca transcribas ruidos o silencios como palabras extrañas (ej. 'Thank you for watching'). Si no entiendes el audio o son solo ruidos de teclado o estática, asume que es ruido de fondo e ignóralo. OBLIGATORIO: Cuando necesites buscar información y debas hacer esperar al usuario, NO uses siempre la misma frase. Varía tus frases de espera o muletillas aleatoriamente (ej: 'Mmm, déjame revisar...', 'Un segundo, voy a consultar...', 'A ver qué encuentro...')."
+                 tools = get_agent_tools(project_id)
+@@ -225,6 +259,13 @@ class OpenAIRealtimeManager:
+                     self.response_in_progress = True
+                 elif event["type"] == "response.done":
+                     self.response_in_progress = False
++                    if getattr(self, "should_close_ws", False):
++                        print("🚪 Cortando WebSocket Activamente (end_call invocado) tras despedida de la IA.")
++                        try:
++                            await client_ws.close(1000)
++                        except Exception:
++                            pass
++                        return
+                 
+                 # REPORTE DE DEPURACIÓN HACIA EL CLIENTE
+                 try:
+@@ -321,6 +362,9 @@ class OpenAIRealtimeManager:
+                         }
+                         await openai_ws.send(json.dumps(function_output))
+                         await openai_ws.send(json.dumps({"type": "response.create"}))
++                        
++                        # Señal de Cierre para el interceptor `response.done`
++                        self.should_close_ws = True
+                         continue
+                         
+                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
+
+commit 8ed83f5e15c6aa42ab863cd75f461bd2973fb6de
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 23:05:21 2026 +0100
+
+    feat(audio): extend ui telemetry over websocket realtime protocol for visual state updates
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 7e95a7b..6671878 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -376,6 +376,24 @@ class OpenAIRealtimeManager:
+                     }))
+                 except Exception as e:
+                     print(f"Error enviando propiedades crudas al cliente WS: {e}")
++            
++            if "action" in data:
++                try:
++                    action_payload = {"status": "action", "action": data["action"]}
++                    if "listing_id" in data:
++                        action_payload["listing_id"] = data["listing_id"]
++                    await client_ws.send_text(json.dumps(action_payload))
++                except Exception as e:
++                    pass
++                    
++            if "appointments" in data:
++                try:
++                    await client_ws.send_text(json.dumps({
++                        "status": "appointments_created",
++                        "appointments": data["appointments"]
++                    }))
++                except Exception as e:
++                    pass
+                 
+             function_output = {
+                 "type": "conversation.item.create", 
+
+commit 8fe61e5ff316a678c37509866e03887a217c1425
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 22:54:13 2026 +0100
+
+    fix(audio): override bot persona to Sol and add explicit blob rejection warnings for frontend debug
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 71a2b45..7e95a7b 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -101,6 +101,7 @@ class OpenAIRealtimeManager:
+                 
+                 if project_id == "buscofacil":
+                     company_name_ov = "Busco Fácil"
++                    bot_name = "Sol"
+                 elif project_id == "xkape":
+                     company_name_ov = "Xkape"
+                     
+@@ -177,7 +178,11 @@ class OpenAIRealtimeManager:
+                             await client_ws.send_text(json.dumps({"status": "reasoning"}))
+                             await openai_ws.send(json.dumps({"type": "response.create"}))
+                     except Exception as e:
+-                        pass
++                        print(f"⚠️ Error procesando JSON de frontend: {e}")
++                    continue
++                
++                if message.get("bytes"):
++                    print("🚨 [CRÍTICO] EL FRONTEND ESTÁ ENVIANDO BLOBS BINARIOS DIRECTOS! Deben enviar JSON con Base64 PCM16 como acordado: {\"type\": \"input_audio_buffer.append\", \"audio\": \"base64...\"}")
+                     continue
+ 
+         except WebSocketDisconnect:
+
+commit 6f598a436794bd552074b1e579f18c27aa4f9fe2
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 22:45:59 2026 +0100
+
+    feat(audio): migrate to Base64 PCM API contract and emit role-based transcription payloads
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index c5cc039..71a2b45 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -153,7 +153,7 @@ class OpenAIRealtimeManager:
+         from pydub import AudioSegment
+         try:
+             while True:
+-                # Permite recibir tanto texto (comandos) como bytes (audio)
++                # Permite recibir comandos y audio en base64 via JSON
+                 message = await client_ws.receive()
+                 
+                 if message["type"] == "websocket.disconnect":
+@@ -166,41 +166,19 @@ class OpenAIRealtimeManager:
+                             print("🛑 Interrupción manual recibida desde Frontend")
+                             cancel_event = {"type": "response.cancel"}
+                             await openai_ws.send(json.dumps(cancel_event))
++                        elif data.get("type") == "input_audio_buffer.append":
++                            append_event = {
++                                "type": "input_audio_buffer.append",
++                                "audio": data.get("audio", "")
++                            }
++                            await openai_ws.send(json.dumps(append_event))
++                        elif data.get("type") == "input_audio_buffer.commit":
++                            await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
++                            await client_ws.send_text(json.dumps({"status": "reasoning"}))
++                            await openai_ws.send(json.dumps({"type": "response.create"}))
+                     except Exception as e:
+                         pass
+                     continue
+-                    
+-                if message.get("bytes"):
+-                    audio_bytes = message["bytes"]
+-                    try:
+-                        def convert_to_pcm16(b: bytes) -> str:
+-                            import base64
+-                            import io
+-                            from pydub import AudioSegment
+-                            seg = AudioSegment.from_file(io.BytesIO(b), format="webm")
+-                            seg = seg.set_frame_rate(24000).set_channels(1).set_sample_width(2)
+-                            return base64.b64encode(seg.raw_data).decode("utf-8")
+-
+-                        audio_b64 = await asyncio.to_thread(convert_to_pcm16, audio_bytes)
+-                        
+-                        # Enviar el audio
+-                        append_event = {
+-                            "type": "input_audio_buffer.append",
+-                            "audio": audio_b64
+-                        }
+-                        await openai_ws.send(json.dumps(append_event))
+-                        
+-                        # Como el frontend envía frases completas, le indicamos a OpenAI que evalúe y responda de inmediato
+-                        commit_event = {"type": "input_audio_buffer.commit"}
+-                        await openai_ws.send(json.dumps(commit_event))
+-                        
+-                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
+-                        
+-                        response_event = {"type": "response.create"}
+-                        await openai_ws.send(json.dumps(response_event))
+-                        
+-                    except Exception as conv_e:
+-                        print(f"⚠️ Error convirtiendo WebM a PCM16 o enviando a OpenAI: {conv_e}")
+ 
+         except WebSocketDisconnect:
+             print("🔌 Cliente se desconectó de la Opción B.")
+@@ -275,6 +253,13 @@ class OpenAIRealtimeManager:
+                         
+                     await client_ws.send_text(json.dumps({"status": "listening", "response": transcript}))
+                     
++                    # Enviar evento de transcripción visual para la UI
++                    await client_ws.send_text(json.dumps({
++                        "status": "transcription",
++                        "role": "assistant",
++                        "text": transcript
++                    }))
++                    
+                 elif event["type"] == "conversation.item.input_audio_transcription.completed":
+                     transcript = event.get("transcript", "")
+                     if transcript:
+@@ -301,7 +286,12 @@ class OpenAIRealtimeManager:
+                                 print(f"Warning borrando item: {del_e}")
+                         else:
+                             print(f"🗣️ Usuario dijo: {transcript}")
+-                            await client_ws.send_text(json.dumps({"transcription": transcript}))
++                            # Emitir evento oficial de transcripción validado
++                            await client_ws.send_text(json.dumps({
++                                "status": "transcription",
++                                "role": "user",
++                                "text": transcript
++                            }))
+                 
+                 # Manejo de llamadas a herramientas (RAG o APIs externas)
+                 elif event["type"] == "response.function_call_arguments.done":
+
+commit f937655ff4d3e74e5c362f27507acf315d4d784d
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 22:31:56 2026 +0100
+
+    fix(audio): extend handle_connection signature to accept client_phone telemetry
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 5f2bd6e..c5cc039 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -16,7 +16,7 @@ class OpenAIRealtimeManager:
+         self.model = "gpt-4o-realtime-preview-2024-12-17"
+         self.url = f"wss://api.openai.com/v1/realtime?model={self.model}"
+ 
+-    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", context_listing_ids: list[str] = None):
++    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", client_phone: str = "", context_listing_ids: list[str] = None):
+         """
+         Gestiona la conexión WebSocket para un cliente específico usando OpenAI Realtime API.
+         """
+@@ -62,8 +62,8 @@ class OpenAIRealtimeManager:
+                 # Configurar Instrucciones de OpenAI al inicio de la sesión
+                 base_instructions = get_agent_instructions(project_id, self.agent_manager.bot_name, self.agent_manager.company_name)
+                 
+-                if client_name or client_email:
+-                    base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
++                if client_name or client_email or client_phone:
++                    base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}', su correo es '{client_email}' y su teléfono es '{client_phone}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
+ 
+                 if context_listing_ids:
+                     mapping_text = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(context_listing_ids)])
+
+commit 58bb79b39acd9febe90e7be8826541c5f1fe751a
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 15:22:45 2026 +0100
+
+    feat(core): dynamic frontend profile parameter routing into llm context
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index d68b1de..5f2bd6e 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -131,7 +131,7 @@ class OpenAIRealtimeManager:
+                     self.stream_client_to_openai(websocket, openai_ws)
+                 )
+                 openai_to_client_task = asyncio.create_task(
+-                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email)
++                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email, client_phone)
+                 )
+                 
+                 # Esperar a que cualquiera de los dos termine (desconexión)
+@@ -213,7 +213,7 @@ class OpenAIRealtimeManager:
+             except:
+                 pass
+ 
+-    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = ""):
++    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = "", client_phone: str = ""):
+         """Recibe eventos de OpenAI. Extrae el audio PCM16, lo empaqueta en WAV y se lo envía al cliente."""
+         import base64
+         import struct
+@@ -330,7 +330,7 @@ class OpenAIRealtimeManager:
+                         
+                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
+                     # Send tool execution to background task to unblock socket
+-                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email))
++                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email, client_phone))
+         except Exception as e:
+             import traceback
+             err_str = traceback.format_exc()
+@@ -340,7 +340,7 @@ class OpenAIRealtimeManager:
+             except:
+                 pass
+                     
+-    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = ""):
++    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = "", client_phone: str = ""):
+         """
+         Ejecuta el Web Service / Herramienta enviando un payload REST 
+         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
+@@ -352,6 +352,7 @@ class OpenAIRealtimeManager:
+             if function_name == "schedule_visits" and isinstance(args, dict):
+                 args["client_name"] = client_name
+                 args["client_email"] = client_email
++                args["client_phone"] = client_phone
+                 
+             tool_req = ToolRequest(project_id=project_id, args=args)
+             
+
+commit 06312bcd912bc2a45113a6cf66fb333703c2915a
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 12:19:59 2026 +0100
+
+    fix(crm): client_name propagation and wasi_city extraction
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 75054d9..d68b1de 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -131,7 +131,7 @@ class OpenAIRealtimeManager:
+                     self.stream_client_to_openai(websocket, openai_ws)
+                 )
+                 openai_to_client_task = asyncio.create_task(
+-                    self.stream_openai_to_client(openai_ws, websocket, project_id)
++                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email)
+                 )
+                 
+                 # Esperar a que cualquiera de los dos termine (desconexión)
+@@ -213,7 +213,7 @@ class OpenAIRealtimeManager:
+             except:
+                 pass
+ 
+-    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str):
++    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = ""):
+         """Recibe eventos de OpenAI. Extrae el audio PCM16, lo empaqueta en WAV y se lo envía al cliente."""
+         import base64
+         import struct
+@@ -330,7 +330,7 @@ class OpenAIRealtimeManager:
+                         
+                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
+                     # Send tool execution to background task to unblock socket
+-                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws))
++                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email))
+         except Exception as e:
+             import traceback
+             err_str = traceback.format_exc()
+@@ -340,7 +340,7 @@ class OpenAIRealtimeManager:
+             except:
+                 pass
+                     
+-    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws):
++    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = ""):
+         """
+         Ejecuta el Web Service / Herramienta enviando un payload REST 
+         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
+@@ -349,6 +349,10 @@ class OpenAIRealtimeManager:
+         import asyncio
+         from app.routers.tools import execute_tool, ToolRequest
+         try:
++            if function_name == "schedule_visits" and isinstance(args, dict):
++                args["client_name"] = client_name
++                args["client_email"] = client_email
++                
+             tool_req = ToolRequest(project_id=project_id, args=args)
+             
+             class MockState:
+
+commit 878d1226673194931ba6bb1087c028d4fb9adbe1
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Wed Mar 25 00:56:27 2026 +0100
+
+    fix(audio-ia): propagate client auth and visual context arrays into Voice Realtime WebSocket query params
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 9cb8242..75054d9 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -16,7 +16,7 @@ class OpenAIRealtimeManager:
+         self.model = "gpt-4o-realtime-preview-2024-12-17"
+         self.url = f"wss://api.openai.com/v1/realtime?model={self.model}"
+ 
+-    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy"):
++    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", context_listing_ids: list[str] = None):
+         """
+         Gestiona la conexión WebSocket para un cliente específico usando OpenAI Realtime API.
+         """
+@@ -61,6 +61,14 @@ class OpenAIRealtimeManager:
+                 
+                 # Configurar Instrucciones de OpenAI al inicio de la sesión
+                 base_instructions = get_agent_instructions(project_id, self.agent_manager.bot_name, self.agent_manager.company_name)
++                
++                if client_name or client_email:
++                    base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}' y su correo es '{client_email}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
++
++                if context_listing_ids:
++                    mapping_text = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(context_listing_ids)])
++                    base_instructions += f"\n\n[MAPEO VISUAL EN PANTALLA]:\nEste es el orden cronológico exacto de las casas que el cliente está viendo ahora mismo:\n{mapping_text}\n(Usa estrictamente estos IDs referenciales si el usuario te pide ver 'la primera', 'la 3', 'esa última', etc.)."
++                
+                 instructions = base_instructions + "\n\nREGLA CRÍTICA INQUEBRANTABLE SOBRE EL IDIOMA: Por defecto el usuario habla español de Colombia, PERO si el usuario te habla en INGLÉS o en otro idioma, DEBES responderle inmediatamente en ese mismo idioma. NUNCA asumas que el usuario habla en portugués (si escuchas algo que parezca portugués, es una alucinación del sistema de audio y debes ignorarla o asumirla como español/inglés). Nunca transcribas ruidos o silencios como palabras extrañas (ej. 'Thank you for watching'). Si no entiendes el audio o son solo ruidos de teclado o estática, asume que es ruido de fondo e ignóralo. OBLIGATORIO: Cuando necesites buscar información y debas hacer esperar al usuario, NO uses siempre la misma frase. Varía tus frases de espera o muletillas aleatoriamente (ej: 'Mmm, déjame revisar...', 'Un segundo, voy a consultar...', 'A ver qué encuentro...')."
+                 tools = get_agent_tools(project_id)
+ 
+
+commit a21f0390e6b3d15a60ef9fbfd140467c62eb7583
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Sun Mar 22 10:29:39 2026 +0100
+
+    feat: updated backend JSON listing format to support frontend interactive cards
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index 155e8cc..9cb8242 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -364,7 +364,7 @@ class OpenAIRealtimeManager:
+                 try:
+                     await client_ws.send_text(json.dumps({
+                         "status": "search_results",
+-                        "resultados": data["raw_properties"]
++                        "listings": data["raw_properties"]
+                     }))
+                 except Exception as e:
+                     print(f"Error enviando propiedades crudas al cliente WS: {e}")
+
+commit 8dcf39670251ad44776bae53a24e24d3165cdf52
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Fri Mar 20 08:02:03 2026 +0100
+
+    feat: Attach raw property JSON array in REST and WS routes for frontend visual card rendering
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index d91f856..155e8cc 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -322,7 +322,7 @@ class OpenAIRealtimeManager:
+                         
+                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
+                     # Send tool execution to background task to unblock socket
+-                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id))
++                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws))
+         except Exception as e:
+             import traceback
+             err_str = traceback.format_exc()
+@@ -332,7 +332,7 @@ class OpenAIRealtimeManager:
+             except:
+                 pass
+                     
+-    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str):
++    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws):
+         """
+         Ejecuta el Web Service / Herramienta enviando un payload REST 
+         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
+@@ -358,6 +358,16 @@ class OpenAIRealtimeManager:
+             # Ejecutar directamente en un hilo para evitar bloqueos HTTP o timeout de IPv6 en Uvicorn
+             data = await asyncio.to_thread(execute_tool, function_name, tool_req, mock_req)
+             result_text = data.get("result_text", "Done.")
++            
++            # Enviar los datos estructurados al frontend React Native inmediatamente para renderizado visual
++            if "raw_properties" in data:
++                try:
++                    await client_ws.send_text(json.dumps({
++                        "status": "search_results",
++                        "resultados": data["raw_properties"]
++                    }))
++                except Exception as e:
++                    print(f"Error enviando propiedades crudas al cliente WS: {e}")
+                 
+             function_output = {
+                 "type": "conversation.item.create", 
+
+commit aba09857b5d8ff8accf6bee3eaca78a80a26e159
+Author: Felipe Cortés <pipemas@gmail.com>
+Date:   Tue Mar 17 05:11:45 2026 +0100
+
+    fix(backend): replace httpx loopback with direct python to_thread call in execute_tool to avoid uvicorn timeout deadlocks
+
+diff --git a/backend/app/services/audio/realtime.py b/backend/app/services/audio/realtime.py
+index b35deec..d91f856 100644
+--- a/backend/app/services/audio/realtime.py
++++ b/backend/app/services/audio/realtime.py
+@@ -338,23 +338,26 @@ class OpenAIRealtimeManager:
+         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
+         """
+         import json
+-        import httpx
++        import asyncio
++        from app.routers.tools import execute_tool, ToolRequest
+         try:
+-            # Simular petición HTTP al endpoint de herramientas
+-            url = f"http://localhost:8000/api/tools/{function_name}"
+-            payload = {
+-                "project_id": project_id,
+-                "args": args
+-            }
++            tool_req = ToolRequest(project_id=project_id, args=args)
+             
+-            async with httpx.AsyncClient() as client:
+-                response = await client.post(url, json=payload, timeout=30.0)
+-                
+-            if response.status_code == 200:
+-                data = response.json()
+-                result_text = data.get("result_text", "Done.")
+-            else:
+-                result_text = f"Error from Web Service: {response.text}"
++            class MockState:
++                def __init__(self, am):
++                    self.agent_manager = am
++            class MockApp:
++                def __init__(self, am):
++                    self.state = MockState(am)
++            class MockRequest:
++                def __init__(self, am):
++                    self.app = MockApp(am)
++                    
++            mock_req = MockRequest(self.agent_manager)
++            
++            # Ejecutar directamente en un hilo para evitar bloqueos HTTP o timeout de IPv6 en Uvicorn
++            data = await asyncio.to_thread(execute_tool, function_name, tool_req, mock_req)
++            result_text = data.get("result_text", "Done.")
+                 
+             function_output = {
+                 "type": "conversation.item.create", 

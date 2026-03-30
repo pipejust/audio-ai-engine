@@ -114,8 +114,13 @@ class OpenAIRealtimeManager:
                     "session": {
                         "instructions": instructions,
                         "voice": safe_voice_id,
-                        # Desactivamos server_vad para cederle el control absoluto al VAD calado en el Frontend Javascript
-                        "turn_detection": None,
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.8,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 600,
+                            "create_response": True
+                        },
                         "input_audio_transcription": {
                             "model": "whisper-1"
                         },
@@ -184,29 +189,11 @@ class OpenAIRealtimeManager:
             print(f"❌ Error conectando con OpenAI: {e}")
 
     async def stream_client_to_openai(self, client_ws: WebSocket, openai_ws):
-        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI. Usa un Timeout Debounce para crear iteraciones solas."""
+        """Recibe audio del cliente en formato WebM y lo convierte a PCM16 para OpenAI. Bloquea el ruido ambiente con RMS."""
         import base64
         import io
         import time
         from pydub import AudioSegment
-        
-        self.last_audio_received_time = time.time()
-        self.has_uncommitted_audio = False
-        
-        async def check_silence():
-            while True:
-                await asyncio.sleep(0.5)
-                # Si han pasado más de 1.2 segundos desde el último chunk y tenemos audio pendiente, cerramos la frase!
-                if self.has_uncommitted_audio and (time.time() - self.last_audio_received_time) > 1.2:
-                    try:
-                        self.has_uncommitted_audio = False
-                        await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-                        await client_ws.send_text(json.dumps({"status": "reasoning"}))
-                        await openai_ws.send(json.dumps({"type": "response.create"}))
-                    except Exception:
-                        pass
-                        
-        silence_task = asyncio.create_task(check_silence())
 
         try:
             while True:
@@ -256,8 +243,8 @@ class OpenAIRealtimeManager:
                         else:
                             rms = 0
                             
-                        if rms < 400:
-                            # Ignorar silencios absolutos o ruidos muy bajos, no saturar a Whisper ni retrasar el VAD Backend
+                        if rms < 1000:
+                            # Ignorar silencios, ruidos de fondo, respiraciones y ecos de parlante de la propia IA. (Threshold ultra-estricto)
                             continue
                         
                         append_event = {
@@ -266,22 +253,16 @@ class OpenAIRealtimeManager:
                         }
                         await openai_ws.send(json.dumps(append_event))
                         
-                        # Actualizamos el tracker de VAD Activo del Backend (Solo se actualiza con voz real, RMS > 400)
-                        self.last_audio_received_time = time.time()
-                        self.has_uncommitted_audio = True
-                        
                     except Exception as e:
                         print(f"Error parseando WebM chunk: {e}")
                     continue
 
         except WebSocketDisconnect:
             print("🔌 Cliente se desconectó de la Opción B.")
-            silence_task.cancel()
         except Exception as e:
             import traceback
             err_str = traceback.format_exc()
             print(f"❌ Error procesando audio del cliente: {err_str}")
-            silence_task.cancel()
             try:
                 await client_ws.send_text(json.dumps({"status": "error", "message": f"ClientStream Task Crash: {e}"}))
             except:
@@ -341,22 +322,16 @@ class OpenAIRealtimeManager:
                         }))
                 
                 if event["type"] == "response.audio.delta":
-                    # Re-buffer in backend: Send one solid WAV frame to eliminate DOM clicking.
+                    # Restore ultra-low 0ms latency. The React clicking is eradicated by purging the text JSON deltas.
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
-                    current_bot_audio_buffer.extend(pcm_bytes)
+                    wav_chunk = create_wav_header(pcm_bytes)
+                    await client_ws.send_bytes(wav_chunk)
                 
-                elif event["type"] == "response.audio.done":
-                    # Emite un solo archivo continuo para el DOM
-                    if len(current_bot_audio_buffer) > 0:
-                        wav_file = create_wav_header(bytes(current_bot_audio_buffer))
-                        await client_ws.send_bytes(wav_file)
-                        current_bot_audio_buffer.clear()
-                        
                 elif event["type"] == "response.audio_transcript.delta":
-                    transcript_delta = event.get("delta", "")
-                    if transcript_delta:
-                        await client_ws.send_text(json.dumps({"status": "listening_delta", "delta": transcript_delta}))
+                    # SILENCE. Do not send raw transcript deltas. Blazing 40 chat payloads per second to React
+                    # blocks the UI thread and physically causes the audio clicking/typing "golpeteo" sound.
+                    pass
                 
                 elif event["type"] == "response.audio_transcript.done":
                     transcript = event["transcript"]

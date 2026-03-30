@@ -126,9 +126,18 @@ def get_agent_tools(project_id: str) -> list:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "listing_id": {"type": "string", "description": "ID del inmueble que el usuario quiere ver. OBLIGATORIO: DEBE ser un STRING (texto con comillas), NUNCA un número entero."}
+                        "listing_id": {"type": "string", "description": "ID del inmueble que el usuario quiere ver. OBLIGATORIO: DEBE ser un STRING."}
                     },
                     "required": ["listing_id"]
+                }
+            },
+            {
+                "type": "function",
+                "name": "close_property_details",
+                "description": "Cierra la vista detallada de un inmueble y regresa a la pantalla anterior con la lista principal de resultados. Úsala INMEDIATAMENTE si el usuario dice 'regresar', 'volver a la lista', o 'cierra esto'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
                 }
             },
             {

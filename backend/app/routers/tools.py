@@ -62,7 +62,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn').lower()
             
         loc_norm = normalize_str(location) if location.lower() != "any" else ""
-        type_norm = normalize_str(tipo) if tipo.lower() != "any" else ""
+        
+        tipo_sin_plural = tipo.lower().replace("casas", "casa").replace("apartamentos", "apartamento").replace("lotes", "lote").replace("fincas", "finca").replace("oficinas", "oficina").replace("locales", "local")
+        type_norm = normalize_str(tipo_sin_plural) if tipo_sin_plural != "any" else ""
         
         if raw_docs:
             for d in raw_docs:
@@ -285,6 +287,13 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             "result_text": "Dile amablemente al usuario: '¡Claro! Aquí tienes los detalles e imágenes de la propiedad en pantalla.'",
             "action": "view_details",
             "listing_id": listing_id
+        }
+        
+    elif function_name == "close_property_details":
+        return {
+            "status": "success",
+            "result_text": "Dile amablemente al usuario: 'Con gusto. He cerrado los detalles de la propiedad, ahora estás de vuelta en la lista principal.'",
+            "action": "close_details"
         }
         
     elif function_name == "schedule_visits":

@@ -223,7 +223,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 pass
             return pid, None
             
-        if filtered_docs:
+        if raw_properties:
             llm_limit = min(int(limit), 5)
             # The top properties semantically matched
             top_properties = raw_properties[:llm_limit]
@@ -260,11 +260,14 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             raw_properties = valid_live_properties
             llm_docs = [d for d in filtered_docs if str(d.metadata.get("property_id")) in [rp["id"] for rp in raw_properties]]
             
-            result_text = f"RESULTADO DE BASE DE DATOS: Encontré {len(filtered_docs)} opciones en total. Aquí tienes las top {len(llm_docs)}:\\n"
-            for i, d in enumerate(llm_docs):
-                snippet = d.page_content[:350] + "..." if len(d.page_content) > 350 else d.page_content
-                result_text += f"\\n[{i+1}] {snippet}\\n"
-            result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio."
+            if len(llm_docs) == 0:
+                result_text = f"Revisé la base de datos extensamente pero los inmuebles disponibles superan tu presupuesto estricto o ya fueron vendidos según WASI. Infórmale al cliente que no pudimos encontrar nada con ese presupuesto en {location}."
+            else:
+                result_text = f"RESULTADO DE BASE DE DATOS: Encontré opciones. Aquí tienes las top {len(llm_docs)}:\\n"
+                for i, d in enumerate(llm_docs):
+                    snippet = d.page_content[:350] + "..." if len(d.page_content) > 350 else d.page_content
+                    result_text += f"\\n[{i+1}] {snippet}\\n"
+                result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio."
         else:
             result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."
             

@@ -233,6 +233,15 @@ class OpenAIRealtimeManager:
                             audio_b64 = data.get("audio", "")
                             
                             if audio_b64:
+                                import time
+                                time_now = time.time()
+                                projected_end = getattr(self, "projected_audio_end_time", 0)
+                                is_audio_playing = getattr(self, "response_in_progress", False) or time_now < projected_end
+                                
+                                # HALF-DUPLEX MUTE (Mudo estricto matemático para bloquear todo eco del parlante)
+                                if getattr(self, "tool_in_progress", False) or is_audio_playing:
+                                    continue
+                                
                                 import base64
                                 import math
                                 import struct
@@ -364,6 +373,9 @@ class OpenAIRealtimeManager:
                 
                 if event["type"] == "response.created":
                     self.response_in_progress = True
+                    self.turn_audio_bytes = 0
+                    import time
+                    self.turn_start_time = time.time()
                 elif event["type"] == "response.done":
                     self.response_in_progress = False
                     if should_close_ws:
@@ -392,10 +404,18 @@ class OpenAIRealtimeManager:
                     import time
                     self.last_ai_speech_time = time.time()
                     
-                    # Dynamic Phrase-Pacing: Acumulamos el PCM hasta alcanzar naturalmente el tamaño orgánico
-                    # de una oración (marcada por los deltas de texto transcrito), para camuflar los "clics" de React.
+                    # Dynamic Phrase-Pacing: Acumulamos el PCM
                     audio_b64 = event["delta"]
                     pcm_bytes = base64.b64decode(audio_b64)
+                    
+                    # CÁLCULO FÍSICO ESTRICTO DEL AUDIO PARA HALF-DUPLEX MUTE:
+                    # 1 segundo de PCM16 a 24000Hz Mono = Exactamente 48000 bytes
+                    self.turn_audio_bytes = getattr(self, "turn_audio_bytes", 0) + len(pcm_bytes)
+                    duration_seconds = self.turn_audio_bytes / 48000.0
+                    turn_start = getattr(self, "turn_start_time", time.time())
+                    # Sumamos 0.8s matemáticos para absorber la latencia HTTP (ping) más el buffering HTML5 del Frontend React
+                    self.projected_audio_end_time = turn_start + duration_seconds + 0.8
+                    
                     current_bot_audio_buffer.extend(pcm_bytes)
                     
                     # Si cruzamos la meta matemática del Delay post-puntuación, O superamos 2 segundos límite (96000), disparamos:

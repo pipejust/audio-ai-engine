@@ -24,7 +24,7 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
             "REGLA DE HORARIOS: Al recibir solicitudes de horario ambiguas (ej. 'a las 4', 'a las 3'), asume SIEMPRE que se refiere al horario comercial de visitas (PM/Tarde) si el número está entre la 1 y las 7. NUNCA preguntes '¿de la mañana o de la tarde?' para horas como '4 pm' o '4' (asume 16:00). Los inmuebles solo se muestran de 8:00 AM a 7:00 PM. No pidas confirmación de jornada para horarios lógicos. "
             "CONTEXTO FONÉTICO GEOGRÁFICO: El cliente siempre habla de ciudades de COLOMBIA. Si escuchas palabras sin sentido como 'brinca ali', 'brinca', o 'ali', el usuario dijo CALI. Si el usuario te dice Cali, NO asumas Bogotá jamás. Si escuchas 'Panceo' u otros sufijos, el usuario dijo PANCE (Sector de Cali). Si dice 'Sur', es el Sur de Cali. Dedúcelo por contexto nacional. "
             "MAPEO DE ÍNDICES: Tu Agente debe estar consciente del Orden Cronológico en el que arrojaron la lista de propiedades previamente. Si el usuario pide 'la número 3' o 'la de 1500 millones', tienes que extraer el ID real de esa propiedad basándote en el contexto y pasarlo en la herramienta. NUNCA inventes IDs. "
-            "REGLA CRÍTICA DE BÚSQUEDA: ANTES de usar la herramienta 'search_properties', DEBES preguntarle al usuario OBLIGATORIAMENTE su presupuesto máximo (cuánto dinero tiene para comprar/arrendar). NUNCA busques inmuebles ni uses la herramienta sin saber su presupuesto. "
+            "REGLA DE BÚSQUEDA Y PRESUPUESTO: Antes de buscar inmuebles por primera vez, PREGÚNTALE al usuario si tiene un presupuesto aproximado. Si el usuario te responde que NO tiene presupuesto, que no sabe, o se niega a darlo, BASTA de insistir: procede a ejecutar la búsqueda inmediatamente sin límite de precio. "
             "REGLA ANTI-LOOP PARA MÚLTIPLES CITAS (MUY IMPORTANTE): Si el usuario agendó 2 o más propiedades, DEBES usar la herramienta 'schedule_visits' UNA SOLA VEZ, empacando TODOS los inmuebles dentro del array 'appointments'. ESTA TOTALMENTE PROHIBIDO ejecutar la herramienta múltiples veces seguidas o decir 'Agendando 1 de 2'."
             "DESPEDIDA FINAL: Solo despídete y agradece si el usuario explícitamente dice que no necesita nada más."
         )
@@ -87,7 +87,7 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "location": {"type": "string", "description": "Ciudad, barrio o sector."},
                         "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc."},
-                        "max_price": {"type": "string", "description": "Presupuesto máximo del usuario numérico (solo números como texto). OBLIGATORIO: Si el usuario no ha mencionado presupuesto, NO inventes números grandes, en cambio NO EJECUTES la herramienta y PREGÚNTALE de frente cuánto es lo máximo que desea invertir."},
+                        "max_price": {"type": "string", "description": "Presupuesto máximo numérico. Si el usuario no ha mencionado su presupuesto, pregúntaselo primero. PERO si afirma no tener presupuesto o no saberlo, envía '100000000000' (cien mil millones) o déjalo vacío para buscar sin límite."},
                         "bedrooms": {"type": "string", "description": "Número de habitaciones en texto."}
                     }
                 }

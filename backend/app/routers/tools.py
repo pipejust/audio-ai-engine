@@ -36,6 +36,11 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         tipo = args.get("property_type", "any")
         limit = args.get("limit", 15)
         
+        import re
+        max_price_str = str(args.get("max_price", "100000000000"))
+        max_price_numerics = re.findall(r"\d+", max_price_str.replace(".", "").replace(",", ""))
+        max_price_val = int("".join(max_price_numerics)) if max_price_numerics else 100000000000
+        
         search_query = f"propiedades disponibles inmueble"
         if tipo.lower() != "any": search_query += f" tipo {tipo}"
         if location.lower() != "any": search_query += f" en {location}"
@@ -88,6 +93,10 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             price_str = extract(r"TIPO DE NEGOCIO:\s*(.*)", content)
             numerics = re.findall(r"\d+", price_str.replace(".", ""))
             precio_int = int(numerics[0]) if numerics else 0
+            
+            # Filtro Matemático de Presupuesto (Tolerancia del 15% para no ser tan cortantes)
+            if max_price_val < 100000000000 and precio_int > (max_price_val * 1.15):
+                continue
             
             prop_id = d.metadata.get("property_id", "")
             url = extract(r"ENLACE PARA EL CLIENTE:\s*(.*)", content)

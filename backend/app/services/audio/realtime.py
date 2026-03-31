@@ -623,11 +623,18 @@ class OpenAIRealtimeManager:
                 
             await openai_ws.send(json.dumps({"type": "response.create"}))
                 
+        except websockets.exceptions.ConnectionClosedOK:
+            pass # El socket se cerró limpiamente por el usuario
+        except websockets.exceptions.ConnectionClosedError:
+            pass # El socket se cerró abruptamente (ej. refresco de página)
         except Exception as tool_e:
             print(f"Error ejecutando tool via HTTP REST: {tool_e}")
             error_output = {"type": "conversation.item.create", "item": {"type": "function_call_output", "call_id": call_id, "output": "Se produjo un error al conectar con el servidor externo."}}
-            await openai_ws.send(json.dumps(error_output))
-            await openai_ws.send(json.dumps({"type": "response.create"}))
+            try:
+                await openai_ws.send(json.dumps(error_output))
+                await openai_ws.send(json.dumps({"type": "response.create"}))
+            except:
+                pass
         finally:
             self.tool_in_progress = False
 

@@ -319,7 +319,11 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         appointments = args.get("appointments", [])
         
         if not client_email or client_email.strip() == "":
-            return "ERROR CRÍTICO: El usuario es un invitado no registrado. Tienes OBLIGATORIAMENTE que responderle: 'Para agendar una cita o visita, primero debes iniciar sesión o registrarte usando el botón del panel lateral.'"
+            return {
+                "status": "success",
+                "result_text": "Dile enérgicamente al usuario: '¡Claro que sí! Para agendar tus visitas, por favor inicia sesión o regístrate en la ventana que acaba de aparecer en tu pantalla.'",
+                "action": "open_login"
+            }
         
         return {
             "status": "success", 

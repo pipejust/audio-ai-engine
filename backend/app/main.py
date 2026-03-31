@@ -169,23 +169,29 @@ from app.services.audio.realtime import OpenAIRealtimeManager
 
 stt_engine = STTEngine()
 tts_engine = TTSEngine()
-openai_realtime_manager = OpenAIRealtimeManager(agent_manager)
-voice_gateway = VoiceGatewayManager(agent_manager, stt_engine, tts_engine, openai_realtime_manager)
 
+# Ya no instanciamos el VoiceGateway de forma global.
+# Debe ser instanciado dinámicamente por solicitud websocket para garantizar aislamiento de memoria (threads).
 @app.websocket("/voice/stream")
 async def websocket_endpoint(websocket: WebSocket):
     """
     Endpoint de WebSocket público para streaming Full Duplex de audio.
     Ya no requiere JWT para permitir acceso público a la interfaz de voz.
     """
-    await voice_gateway.connect(websocket)
+    local_realtime = OpenAIRealtimeManager(agent_manager)
+    local_gateway = VoiceGatewayManager(agent_manager, stt_engine, tts_engine, local_realtime)
+    await local_gateway.connect(websocket)
     project_id = websocket.query_params.get("project_id", "default")
     client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
     client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
     client_phone = websocket.query_params.get("clientPhone", websocket.query_params.get("client_phone", ""))
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
-    await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
+    
+    try:
+        await local_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
+    finally:
+        local_gateway.disconnect(websocket)
 
 @app.websocket("/ws/realtime/{project_id}")
 async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
@@ -193,13 +199,19 @@ async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
     Endpoint de WebSocket alias (Legacy) para mantener compatibilidad 
     con frontends cacheados en Vercel que apuntan a la ruta antigua.
     """
-    await voice_gateway.connect(websocket)
+    local_realtime = OpenAIRealtimeManager(agent_manager)
+    local_gateway = VoiceGatewayManager(agent_manager, stt_engine, tts_engine, local_realtime)
+    await local_gateway.connect(websocket)
     client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
     client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
     client_phone = websocket.query_params.get("clientPhone", websocket.query_params.get("client_phone", ""))
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
-    await voice_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
+    
+    try:
+        await local_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
+    finally:
+        local_gateway.disconnect(websocket)
 
 @app.get("/api/test-openai")
 async def test_openai_api():

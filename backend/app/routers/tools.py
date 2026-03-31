@@ -289,9 +289,10 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             else:
                 result_text = f"RESULTADO DE BASE DE DATOS: Encontré opciones. Aquí tienes las top {len(llm_docs)}:\\n"
                 for i, d in enumerate(llm_docs):
+                    prop_id = d.metadata.get("property_id", "DESCONOCIDO")
                     snippet = d.page_content[:350] + "..." if len(d.page_content) > 350 else d.page_content
-                    result_text += f"\\n[{i+1}] {snippet}\\n"
-                result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio."
+                    result_text += f"\\n[{i+1}] (ID_INMUEBLE: {prop_id}) {snippet}\\n"
+                result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE de cada opción por si el usuario pide seleccionar, agendar o ver detalles."
         else:
             result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."
             

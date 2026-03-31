@@ -39,6 +39,8 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         tipo = args.get("property_type", "any")
         limit = args.get("limit", 15)
         
+        print(f"🔥 BÚSQUEDA RAG: location='{location}' | city='{city}' | barrio='{neighborhood}' | tipo='{tipo}'")
+        
         import re
         max_price_str = str(args.get("max_price", "100000000000"))
         max_price_numerics = re.findall(r"\d+", max_price_str.replace(".", "").replace(",", ""))

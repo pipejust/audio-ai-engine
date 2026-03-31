@@ -617,10 +617,6 @@ class OpenAIRealtimeManager:
             
             await openai_ws.send(json.dumps(function_output))
             
-            # 3. Wait until the current active response (e.g. the muletilla) finishes playing
-            while getattr(self, "response_in_progress", False):
-                await asyncio.sleep(0.1)
-                
             await openai_ws.send(json.dumps({"type": "response.create"}))
                 
         except websockets.exceptions.ConnectionClosedOK:

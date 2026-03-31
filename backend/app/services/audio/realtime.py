@@ -593,6 +593,8 @@ class OpenAIRealtimeManager:
                     action_payload = {"status": "action", "action": data["action"]}
                     if "listing_id" in data:
                         action_payload["listing_id"] = data["listing_id"]
+                    if "listing_ids" in data:
+                        action_payload["listing_ids"] = data["listing_ids"]
                     await client_ws.send_text(json.dumps(action_payload))
                 except Exception as e:
                     pass

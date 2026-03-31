@@ -89,9 +89,13 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                             break
                     if not valid_location:
                         continue
-                if type_norm and type_norm not in meta_type and type_norm not in page_norm:
-                    continue
-                    
+                if type_norm:
+                    if meta_type:
+                        if type_norm not in meta_type:
+                            continue
+                    else:
+                        if type_norm not in page_norm:
+                            continue
                 filtered_docs.append(d)
                 if len(filtered_docs) >= 100:
                     break

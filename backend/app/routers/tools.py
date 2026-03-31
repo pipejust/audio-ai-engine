@@ -32,7 +32,10 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         return {"status": "success", "result_text": context_text}
         
     elif function_name == "search_properties":
-        location = args.get("location", "any")
+        city = args.get("city", "")
+        neighborhood = args.get("neighborhood", "")
+        loc_parts = [p.strip() for p in [city, neighborhood] if p.strip()]
+        location = ", ".join(loc_parts) if loc_parts else "any"
         tipo = args.get("property_type", "any")
         limit = args.get("limit", 15)
         

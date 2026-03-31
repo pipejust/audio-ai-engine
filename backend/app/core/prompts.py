@@ -85,7 +85,8 @@ def get_agent_tools(project_id: str) -> list:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "location": {"type": "string", "description": "Ciudad, barrio o sector explícito. OBLIGATORIO: Si el usuario te pidió un barrio en un mensaje anterior (ej. Pance) y luego te aclaró la ciudad (ej. Cali), el valor de location DEBE incluir ambos (ej. 'Cali, Pance'). NUNCA descartes ni olvides el barrio original. Y si no hay ciudad, consúltasela primero."},
+                        "city": {"type": "string", "description": "Ciudad principal obligatoria (ej. Cali, Bogotá, Medellín). OBLIGATORIO: Si el usuario te pidió un inmueble pero no mencionó la ciudad, debes obligatoriamente preguntarle en qué ciudad busca. NUNCA inventes la ciudad."},
+                        "neighborhood": {"type": "string", "description": "Barrio, sector o zona específica (ej. Pance, El Ingenio, Cedritos). Consérvalo en memoria si el usuario lo mencionó en un mensaje anterior. No es obligatorio."},
                         "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc."},
                         "min_price": {"type": "string", "description": "Presupuesto mínimo numérico mencionado por el usuario (ej si dice 'entre 1000 y 1400', esto es 1000000000). Déjalo vacío si no indica mínimo."},
                         "max_price": {"type": "string", "description": "Presupuesto máximo numérico. Si el usuario no ha mencionado su presupuesto máximo, pregúntaselo primero. PERO si afirma no tener presupuesto o no saberlo, envía '100000000000'."},

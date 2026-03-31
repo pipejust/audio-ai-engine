@@ -87,12 +87,12 @@ def get_agent_tools(project_id: str) -> list:
                     "properties": {
                         "city": {"type": "string", "description": "Ciudad principal obligatoria (ej. Cali, Bogotá, Medellín). OBLIGATORIO: Si el usuario te pidió un inmueble pero no mencionó la ciudad, debes obligatoriamente preguntarle en qué ciudad busca. NUNCA inventes la ciudad."},
                         "neighborhood": {"type": "string", "description": "Barrio, sector o zona específica (ej. Pance, El Ingenio, Cedritos). OBLIGATORIO: Mantenlo guardado intacto si el usuario lo dijo en un mensaje anterior. Si el usuario NUNCA ha mencionado un barrio desde el inicio, pon explícitamente una cadena vacía '' . NUNCA lo olvides al cambiar de ciudad."},
-                        "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc."},
+                        "property_type": {"type": "string", "description": "Casa, apartamento, lote, etc. OBLIGATORIO: Si el usuario pide casas pon 'casa', etc. Si el usuario NO menciona qué tipo de inmueble quiere, DEBES pasar la palabra 'any'."},
                         "min_price": {"type": "string", "description": "Presupuesto mínimo numérico mencionado por el usuario (ej si dice 'entre 1000 y 1400', esto es 1000000000). Déjalo vacío si no indica mínimo."},
                         "max_price": {"type": "string", "description": "Presupuesto máximo numérico. Si el usuario no ha mencionado su presupuesto máximo, pregúntaselo primero. PERO si afirma no tener presupuesto o no saberlo, envía '100000000000'."},
                         "bedrooms": {"type": "string", "description": "Número de habitaciones en texto."}
                     },
-                    "required": ["city", "neighborhood"]
+                    "required": ["city", "neighborhood", "property_type"]
                 }
             },
             {

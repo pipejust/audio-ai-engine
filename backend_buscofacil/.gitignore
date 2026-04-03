@@ -1,0 +1,4 @@
+.chroma_db/
+test.db
+test.pcm
+.env

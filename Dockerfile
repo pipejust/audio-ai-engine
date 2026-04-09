@@ -20,10 +20,10 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el código fuente
-COPY backend/app /app/backend/app
-COPY backend/knowledge_registry.db /app/backend/knowledge_registry.db
+COPY backend_buscofacil/app /app/backend_buscofacil/app
+COPY backend_buscofacil/knowledge_registry.db /app/backend_buscofacil/knowledge_registry.db
 # Para montar temporales si es necesario
-RUN mkdir -p /app/backend/uploads
+RUN mkdir -p /app/backend_buscofacil/uploads
 
 # Exponer el puerto
 EXPOSE 8000
@@ -34,7 +34,7 @@ ENV PORT=10000
 ENV RENDER=1
 
 # Configurar el PYTHONPATH para que Python y Uvicorn encuentren el módulo 'app' absoluto
-ENV PYTHONPATH=/app/backend
+ENV PYTHONPATH=/app/backend_buscofacil
 
 # Comando de inicio
 CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"

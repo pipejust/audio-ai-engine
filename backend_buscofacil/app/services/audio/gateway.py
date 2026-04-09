@@ -16,7 +16,7 @@ class VoiceGatewayManager:
         self.tts_engine = tts_engine
         self.openai_realtime_manager = openai_realtime_manager
         self.active_connections: list[WebSocket] = []
-        self.mode = os.getenv("VOICE_ENGINE_MODE", "GROQ")
+        self.mode = "GROQ"
         self.current_task = None
         
         self.filler_audios = [] # Desactivamos muletillas pregeneradas para evitar acentos gringos incorrectos
@@ -87,14 +87,9 @@ class VoiceGatewayManager:
 
         # Saludo Proactivo Inmediato
         try:
-            greeting_result = self.agent_manager.process_query("system_greeting_trigger", project_id=project_id)
-            text_response = greeting_result.get("response", "Hola.")
-            print(f"🤖 Agente saluda: {text_response}")
-            await self._send_json(websocket, {"status": "speaking", "response": text_response})
-            audio_response = self.tts_engine.generate_audio(text_response, voice_id)
-            if audio_response:
-                await websocket.send_bytes(audio_response)
-            await self._send_json(websocket, {"status": "listening"})
+            self.current_task = asyncio.create_task(
+                voice_session.respond("El usuario acaba de abrir la aplicación. Ignora el contexto anterior si lo hay. Tu primera y única respuesta ahora mismo debe ser saludándolo cortamente en MÁXIMO 10 a 15 palabras. Ej: 'Hola soy tu asesor de BuscoFácil, ¿en qué te puedo ayudar?'")
+            )
         except Exception as e:
             print(f"Error en saludo: {e}")
 
@@ -108,6 +103,9 @@ class VoiceGatewayManager:
                         await voice_session.handle_interruption()
             redis_task = asyncio.create_task(listen_redis())
 
+        audio_buffer = bytearray()
+        has_useful_audio = False
+        
         try:
             while True:
                 message = await websocket.receive()
@@ -121,6 +119,57 @@ class VoiceGatewayManager:
                             await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
                         else:
                             await voice_session.handle_interruption()
+                        continue
+                        
+                    try:
+                        import base64
+                        import io
+                        import wave
+                        import math
+                        import struct
+                        
+                        data = json.loads(text_data)
+                        if data.get("type") == "input_audio_buffer.append":
+                            audio_b64 = data.get("audio", "")
+                            if audio_b64:
+                                raw_pcm = base64.b64decode(audio_b64)
+                                count = len(raw_pcm) // 2
+                                if count > 0:
+                                    clean_pcm = raw_pcm[:count*2]
+                                    shorts = struct.unpack(f"<{count}h", clean_pcm)
+                                    rms = math.sqrt(sum(s*s for s in shorts) / count)
+                                else:
+                                    rms = 0
+                                    
+                                if rms < 350:
+                                    continue
+                                    
+                                has_useful_audio = True
+                                audio_buffer.extend(base64.b64decode(audio_b64))
+                        elif data.get("type") == "input_audio_buffer.commit":
+                            if not has_useful_audio or not audio_buffer:
+                                print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS bajo).")
+                                continue
+                            
+                            print("✅ Commit aceptado. Activando IA para procesar el audio aportado...")
+                            if self.current_task and not self.current_task.done():
+                                self.current_task.cancel()
+                                
+                            wav_io = io.BytesIO()
+                            with wave.open(wav_io, 'wb') as wf:
+                                wf.setnchannels(1)
+                                wf.setsampwidth(2)
+                                wf.setframerate(24000)
+                                wf.writeframes(audio_buffer)
+                            
+                            wav_bytes = wav_io.getvalue()
+                            audio_buffer.clear()
+                            has_useful_audio = False
+                            
+                            await self._send_json(voice_session.ws, {"status": "reasoning"})
+                            self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, wav_bytes))
+                    except Exception as e:
+                        print(f"Error procesando JSON de frontend en Groq Pipeline: {e}")
                     continue
                     
                 audio_bytes = message.get("bytes")
@@ -130,7 +179,7 @@ class VoiceGatewayManager:
                 if self.current_task and not self.current_task.done():
                     self.current_task.cancel()
                     
-                self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, audio_bytes))
+                self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, audio_bytes, filename="audio.webm"))
 
         except WebSocketDisconnect:
             self.disconnect(websocket)
@@ -141,13 +190,13 @@ class VoiceGatewayManager:
             if redis_task: redis_task.cancel()
             if r: await r.close()
 
-    async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes):
+    async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes, filename: str = "audio.wav"):
         try:
-            print(f"🎙️ Procesando {len(audio_bytes)} bytes de audio para streaming.")
+            print(f"🎙️ Procesando {len(audio_bytes)} bytes de audio ({filename}) para streaming.")
             await self._send_json(voice_session.ws, {"status": "transcribing"})
             
             try:
-                transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes)
+                transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes, filename)
             except Exception as e:
                 print(f"⚠️ Error STT (ignorado): {e}")
                 await self._send_json(voice_session.ws, {"status": "listening"})

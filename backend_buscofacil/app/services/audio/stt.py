@@ -11,11 +11,11 @@ class STTEngine:
         self.client = Groq(api_key=groq_api_key)
         self.model = "whisper-large-v3-turbo" # Muy rápido
 
-    def transcribe_audio(self, audio_bytes: bytes) -> str:
+    def transcribe_audio(self, audio_bytes: bytes, filename: str = "audio.wav") -> str:
         """Convierte bytes de audio a texto usando Groq Whisper"""
         try:
             # Groq requiere un archivo con nombre, así que wrappeamos el buffer
-            file_tuple = ("audio.webm", audio_bytes)
+            file_tuple = (filename, audio_bytes)
             
             completion = self.client.audio.transcriptions.create(
                 file=file_tuple,

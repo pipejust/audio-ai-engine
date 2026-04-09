@@ -16,7 +16,7 @@ class VoiceGatewayManager:
         self.tts_engine = tts_engine
         self.openai_realtime_manager = openai_realtime_manager
         self.active_connections: list[WebSocket] = []
-        self.mode = os.getenv("VOICE_ENGINE_MODE", "OPENAI_REALTIME")
+        self.mode = os.getenv("VOICE_ENGINE_MODE", "GROQ")
         self.current_task = None
         
         self.filler_audios = [] # Desactivamos muletillas pregeneradas para evitar acentos gringos incorrectos

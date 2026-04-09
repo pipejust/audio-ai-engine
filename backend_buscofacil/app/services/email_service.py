@@ -47,8 +47,41 @@ def send_appointment_emails(project_id: str, client_name: str, client_email: str
             
             body_user += "\nRecuerda: Tu cita aún debe ser confirmada por el responsable del inmueble. Te contactaremos pronto.\n\nEl equipo de Busco Fácil"
             msg_user.set_content(body_user)
+
+            # HTML version for user
+            html_user_content = f"""
+                <h2>¡Tu pre-agendamiento fue exitoso!</h2>
+                <p>Hola <strong>{client_name}</strong>,</p>
+                <p>Hemos registrado existosamente tu solicitud para las siguientes propiedades:</p>
+                <ul class="data-list">
+            """
+            for appt in appointments:
+                html_user_content += f"<li>Propiedad ID: <strong>{appt}</strong></li>"
+            html_user_content += """
+                </ul>
+                <p><strong>Recuerda:</strong> Tu cita aún debe ser confirmada por el responsable del inmueble. Te contactaremos pronto con los detalles.</p>
+            """
             
-            # Notificación 2 e Inteerna: Al Contacto / Interno (Para simplificar, mandamos un solo email a internal_bcc)
+            from app.services.email_templates import get_base_email_html
+            html_user = get_base_email_html(
+                title="Tus Citas Pre-Agendadas - Busco Fácil", 
+                content_html=html_user_content,
+                preheader=f"Hola {client_name}, hemos registrado tu solicitud de agendamiento."
+            )
+            msg_user.add_alternative(html_user, subtype='html')
+            
+            import re
+            # Prepare phone number for WhatsApp and Tel links
+            clean_phone = re.sub(r'[^\d+]', '', client_phone)
+            # Default to +57 if no country code is present (assuming Colombian numbers as default)
+            if not clean_phone.startswith('+') and clean_phone.startswith('57'):
+                clean_phone = '+' + clean_phone
+            elif not clean_phone.startswith('+'):
+                clean_phone = '+57' + clean_phone
+            
+            wa_phone = clean_phone.replace('+', '')
+
+            # Notificación 2 e Inteerna: Al Contacto / Interno
             msg_internal = EmailMessage()
             msg_internal["Subject"] = f"Nueva Solicitud de Cita - {client_name}"
             msg_internal["From"] = from_email
@@ -60,6 +93,36 @@ def send_appointment_emails(project_id: str, client_name: str, client_email: str
             
             body_internal += "\nPor favor revisa el panel de Busco Fácil para coordinar con los asesores correspondientes."
             msg_internal.set_content(body_internal)
+
+            # HTML version for internal
+            html_internal_content = f"""
+                <h2>Nueva solicitud de agendamiento</h2>
+                <p>El usuario <strong>{client_name}</strong> ha solicitado agendar citas.</p>
+                
+                <h3>Datos de Contacto:</h3>
+                <ul class="data-list">
+                    <li><strong>Email:</strong> <a href="mailto:{client_email}">{client_email}</a></li>
+                    <li><strong>Celular:</strong> <a href="tel:{clean_phone}">{client_phone}</a></li>
+                </ul>
+                <a href="https://wa.me/{wa_phone}" class="btn-whatsapp">Contactar por WhatsApp</a>
+                
+                <h3 style="margin-top: 30px;">Propiedades Solicitadas:</h3>
+                <ul class="data-list">
+            """
+            for appt in appointments:
+                html_internal_content += f"<li>Propiedad ID: <strong>{appt}</strong></li>"
+            html_internal_content += """
+                </ul>
+                <p>Por favor revisa el panel de Busco Fácil para coordinar.</p>
+            """
+            
+            html_internal = get_base_email_html(
+                title="Nueva Solicitud Interna", 
+                content_html=html_internal_content,
+                preheader=f"Solicitud de cita para {client_name}"
+            )
+            
+            msg_internal.add_alternative(html_internal, subtype='html')
             
             server.send_message(msg_user)
             server.send_message(msg_internal)

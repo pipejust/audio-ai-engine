@@ -1,0 +1,48 @@
+class SentenceAccumulator:
+    FIRST_EMIT_TOKENS  = 8    # tokens para primer chunk (arranque rápido)
+    MIN_EMIT_TOKENS    = 3    # mínimo absoluto para emitir
+    FORCE_EMIT_TOKENS  = 25   # máximo sin puntuación antes de forzar
+    PUNCTUATION_END    = {'.', '?', '!', '…'}
+    PUNCTUATION_PAUSE  = {',', ';'}
+ 
+    def __init__(self, on_chunk):
+        self.buffer   = []
+        self.on_chunk = on_chunk  # callback async -> TTS
+        self.first_emitted = False
+ 
+    async def push(self, token: str):
+        self.buffer.append(token)
+        text = ''.join(self.buffer).strip()
+        n = len(self.buffer)
+ 
+        should_emit = False
+ 
+        # Arranque rápido — primera oración
+        if not self.first_emitted and n >= self.FIRST_EMIT_TOKENS:
+            last = text[-1] if text else ''
+            if last in self.PUNCTUATION_END:
+                should_emit = True
+ 
+        # Puntuación de fin de oración
+        elif text and text[-1] in self.PUNCTUATION_END and n >= self.MIN_EMIT_TOKENS:
+            should_emit = True
+ 
+        # Puntuación de pausa (coma, punto y coma)
+        elif text and text[-1] in self.PUNCTUATION_PAUSE and n >= 12:
+            should_emit = True
+ 
+        # Forzado — evita bloqueo si el LLM no puntúa
+        elif n >= self.FORCE_EMIT_TOKENS:
+            should_emit = True
+ 
+        if should_emit and len(text) >= self.MIN_EMIT_TOKENS:
+            await self.on_chunk(text)
+            self.buffer = []
+            self.first_emitted = True
+ 
+    async def flush(self):
+        # Llamado al final del stream LLM
+        text = ''.join(self.buffer).strip()
+        if text:
+            await self.on_chunk(text)
+        self.buffer = []

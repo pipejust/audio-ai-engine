@@ -53,3 +53,48 @@ class TTSEngine:
         except Exception as e:
             print(f"❌ Error en TTS ElevenLabs: {e}")
             return None
+
+    async def synthesize_and_stream(self, text: str, ws, session_id: str, redis, voice_name: str = "alloy"):
+        """TTS Streaming por chunks con soporte de Barge-In. (Sustituto Async de Kokoro según especificaciones)."""
+        import aiohttp
+        import asyncio
+        if not text or not self.api_key:
+            return
+            
+        voice_map = {
+            "echo": os.getenv("ELEVENLABS_VOICE_ID", "GpnOed0ndzjm6Pc8JALF"),
+            "alloy": "EXAVITQu4vr4xnSDxMaL",
+            "shimmer": "EXAVITQu4vr4xnSDxMaL",
+        }
+        target_voice_id = voice_map.get(voice_name, self.voice_id)
+        
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice_id}/stream?output_format=mp3_44100_128"
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": self.api_key
+        }
+        data = {
+            "text": text,
+            "model_id": "eleven_turbo_v2_5",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.5}
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=data, headers=headers) as resp:
+                    resp.raise_for_status()
+                    async for chunk in resp.content.iter_chunked(4096):
+                        # Verificar si hubo barge-in antes de enviar cada chunk
+                        if await redis.exists(f'voice:interrupt:{session_id}'):
+                            print("🛑 TTS abortado por interrupción del usuario.")
+                            break
+                        if chunk:
+                            await ws.send_bytes(chunk)
+                            await asyncio.sleep(0.01) # Pequeño sleep para evitar saturar el WebSocket
+        except asyncio.CancelledError:
+            # Barge-in canceló la tarea — silenciar cliente
+            await ws.send_json({'type': 'tts_stop'})
+            raise
+        except Exception as e:
+            print(f"❌ Error en TTS Streaming HTTP: {e}")

@@ -24,7 +24,7 @@ class AgentManager:
         self.vector_store = VectorStoreManager()
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
 
-    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "", client_phone: str = "") -> dict:
+    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP") -> dict:
         """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
         if not query or not str(query).strip():
             return {"response": "", "status": "ignored"}
@@ -53,6 +53,9 @@ class AgentManager:
                 system_prompt.content += f"\n\nREGLA DE CONTEXTO: OBLIGATORIO LEER.\nEl sistema te informa que estás atendiendo al usuario: {client_name}, Teléfono: {client_phone}.\nComo ya tienes estos datos, TIENES STRICTAMENTE PROHIBIDO preguntar su nombre o teléfono. Si el usuario te pide agendar, EJECUTA LA HERRAMIENTA DE AGENDAMIENTO INMEDIATAMENTE e INYECTA estos datos directamente en el JSON de 'appointments'. Cero preguntas."
             else:
                 system_prompt.content += "\n\nREGLA DE CONTACTO: Eres un invitado anónimo. Antes de emitir el JSON final de 'appointments', SIEMPRE pregunta amablemente al cliente: '¿A qué nombre y número de celular dejo registrada la visita?'. Una vez que el usuario los proporcione, debes emitir esos datos exactos e inyectarlos localmente en el arreglo JSON de la respuesta usando las llaves 'client_name' y 'client_phone'. Si el usuario se niega a darlos o dice 'usa mi perfil', envía ''."
+
+            if currency and currency != "COP":
+                system_prompt.content += f"\n\nREGLA DE DIVISAS Y DINERO (IMPERATIVO): El usuario ha seleccionado la moneda {currency}. A partir de ahora, TODOS los precios que le digas o escribas DEBEN ser expresados verbalmente en la moneda {currency} (ej. 'Dólares' si es USD, o 'Euros' si es EUR). NUNCA menciones Pesos Colombianos ni COP. Los números en los datos de las herramientas ya vienen convertidos matemáticamente a {currency}, solo encárgate de pronunciarlos con el nombre de esta moneda."
 
             if context_listing_ids:
                 # Inyección instantánea (Cero latencia) del orden visual exacto
@@ -161,7 +164,7 @@ class AgentManager:
                             self.app = MockApp(am)
                     
                     mock_req = MockRequest(self)
-                    tool_req = ToolRequest(project_id=project_id, args=args)
+                    tool_req = ToolRequest(project_id=project_id, args=args, currency=currency)
                     
                     try:
                         # Ejecución local síncrona
@@ -225,3 +228,92 @@ class AgentManager:
                 "response": f"Lo siento, mi motor de texto tuvo un inconveniente: {str(e)}",
                 "status": "error"
             }
+
+    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP"):
+        """Simplificación asíncrona de process_query para VoiceSession que retorna un iterador de tokens.
+        Soporta Agent Tool Calling en tiempo real."""
+        if not query or not query.strip(): return
+        
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+        import json
+        from app.routers.tools import get_agent_tools, execute_tool, ToolRequest
+
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True)
+        raw_tools = get_agent_tools(project_id)
+        chat_tools = []
+        for t in raw_tools:
+            chat_tools.append({
+                "type": "function",
+                "function": {
+                    "name": t.get("name"),
+                    "description": t.get("description"),
+                    "parameters": t.get("parameters", {})
+                }
+            })
+            
+        llm_with_tools = llm.bind_tools(chat_tools)
+        messages = history or [SystemMessage(content="Eres un asistente experto.")]
+        
+        try:
+            # Iteración 1: Ver si lanza texto directo o pide una tool
+            is_tool_call = False
+            tool_call_chunks = []
+            
+            async for chunk in llm_with_tools.astream(messages):
+                if chunk.tool_call_chunks:
+                    is_tool_call = True
+                    tool_call_chunks.extend(chunk.tool_call_chunks)
+                elif chunk.content and not is_tool_call:
+                    yield chunk.content
+                    
+            if is_tool_call:
+                # Armar el Tool Call consolidado
+                from collections import defaultdict
+                consolidated = defaultdict(lambda: {"name": "", "args": "", "id": ""})
+                
+                for tcc in tool_call_chunks:
+                    idx = tcc.get("index")
+                    if tcc.get("name"): consolidated[idx]["name"] += tcc["name"]
+                    if tcc.get("args"): consolidated[idx]["args"] += tcc["args"]
+                    if tcc.get("id"): consolidated[idx]["id"] = tcc["id"]
+
+                messages.append(AIMessage(content="", tool_calls=[
+                    {"name": c["name"], "args": json.loads(c["args"]), "id": c["id"]} for c in consolidated.values()
+                ]))
+                
+                # Ejecutar
+                for c in consolidated.values():
+                    func_name = c["name"]
+                    args = json.loads(c["args"])
+                    
+                    if func_name == "schedule_visits":
+                        if isinstance(args, dict):
+                            args["client_name"] = client_name
+                            args["client_email"] = client_email
+                            args["client_phone"] = client_phone
+                    
+                    class MockRequest:
+                        class MockApp:
+                            class MockState:
+                                agent_manager = self
+                            state = MockState()
+                        app = MockApp()
+                    
+                    tool_req = ToolRequest(project_id=project_id, args=args, currency=currency)
+                    try:
+                        data = execute_tool(func_name, tool_req, MockRequest())
+                        result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
+                    except Exception as e:
+                        result_text = f"Error: {e}"
+                        
+                    messages.append(ToolMessage(content=result_text, tool_call_id=c["id"], name=func_name))
+                
+                # Iteración 2: Emitir veredicto final en stream
+                async for chunk in llm_with_tools.astream(messages):
+                    if chunk.content:
+                        yield chunk.content
+
+        except Exception as e:
+            print(f"❌ Error en process_query_stream: {e}")
+            yield "Hubo un error de conexión."

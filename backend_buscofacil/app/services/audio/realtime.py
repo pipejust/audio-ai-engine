@@ -16,7 +16,7 @@ class OpenAIRealtimeManager:
         self.model = "gpt-4o-realtime-preview-2024-12-17"
         self.url = f"wss://api.openai.com/v1/realtime?model={self.model}"
 
-    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", client_phone: str = "", context_listing_ids: list[str] = None):
+    async def handle_connection(self, websocket: WebSocket, project_id: str = "default", voice_id: str = "alloy", client_name: str = "", client_email: str = "", client_phone: str = "", context_listing_ids: list[str] = None, currency: str = "COP"):
         """
         Gestiona la conexión WebSocket para un cliente específico usando OpenAI Realtime API.
         """
@@ -99,6 +99,9 @@ class OpenAIRealtimeManager:
                 if client_name or client_email or client_phone:
                     base_instructions += f"\n\n[CONTEXTO DE AUTENTICACIÓN]:\nEl sistema ya te envía los datos reales y autenticados del usuario en el payload. Su nombre es '{client_name}', su correo es '{client_email}' y su teléfono es '{client_phone}'. ASUME automáticamente esta información para armar tus Tools. NUNCA le pidas nombre, correo NI TELÉFONO al usuario para agendar; procesa el json de inmediato usando los datos de tu sistema."
 
+                if currency and currency != "COP":
+                    base_instructions += f"\n\nREGLA DE DIVISAS Y DINERO (IMPERATIVO): El usuario ha seleccionado la moneda {currency}. A partir de ahora, TODOS los precios que le digas o escribas DEBEN ser expresados verbalmente en la moneda {currency} (ej. 'Dólares' si es USD, o 'Euros' si es EUR). NUNCA menciones Pesos Colombianos ni COP. Los números en los datos de las herramientas ya vienen convertidos matemáticamente a {currency}, solo encárgate de pronunciarlos con el nombre de esta moneda."
+
                 if hydrated_mapping_text:
                     base_instructions += f"\n\n[ESTADO ACTUAL EN LA PANTALLA DEL USUARIO]:\nEsta es la lista cronológica de las propiedades que el cliente está viendo ahora mismo:\n{hydrated_mapping_text}\n(Si el usuario te pide ver o agendar la primera propiedad o la número 1, usa SIEMPRE Y OBLIGATORIAMENTE el ID '{context_listing_ids[0]}'). Así tendrás consciencia espacial total de lo que el usuario ve y llamarás tus herramientas con los ALFANUMÉRICOS REALES exactos."
                 
@@ -167,7 +170,7 @@ class OpenAIRealtimeManager:
                     self.stream_client_to_openai(websocket, openai_ws)
                 )
                 openai_to_client_task = asyncio.create_task(
-                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email, client_phone)
+                    self.stream_openai_to_client(openai_ws, websocket, project_id, client_name, client_email, client_phone, currency)
                 )
                 
                 # Esperar a que cualquiera de los dos termine (desconexión)
@@ -343,7 +346,7 @@ class OpenAIRealtimeManager:
             except:
                 pass
 
-    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = "", client_phone: str = ""):
+    async def stream_openai_to_client(self, openai_ws, client_ws: WebSocket, project_id: str, client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP"):
         """Recibe eventos de OpenAI. Extrae el audio PCM16, lo empaqueta en WAV y se lo envía al cliente."""
         import base64
         import struct
@@ -529,7 +532,7 @@ class OpenAIRealtimeManager:
                         
                     # Remove custom muletilla logic as the AI generates its own conversational filler internally.
                     # Send tool execution to background task to unblock socket
-                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email, client_phone))
+                    asyncio.create_task(self.execute_tool_and_respond(function_name, call_id, args, openai_ws, project_id, client_ws, client_name, client_email, client_phone, currency))
         except Exception as e:
             import traceback
             err_str = traceback.format_exc()
@@ -539,7 +542,7 @@ class OpenAIRealtimeManager:
             except:
                 pass
                     
-    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = "", client_phone: str = ""):
+    async def execute_tool_and_respond(self, function_name: str, call_id: str, args: dict, openai_ws, project_id: str, client_ws, client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP"):
         """
         Ejecuta el Web Service / Herramienta enviando un payload REST 
         hacia un endpoint interno (que simula uno externo) y retorna la respuesta.
@@ -560,7 +563,7 @@ class OpenAIRealtimeManager:
                 except Exception:
                     pass
                 
-            tool_req = ToolRequest(project_id=project_id, args=args)
+            tool_req = ToolRequest(project_id=project_id, args=args, currency=currency)
             
             class MockState:
                 def __init__(self, am):

@@ -133,6 +133,8 @@ class ChatRequest(BaseModel):
     clientName: str = ""
     clientEmail: str = ""
     clientPhone: str = ""
+    currency: str = "COP"
+    voice_gender: str = ""
 
 @app.get("/")
 def read_root():
@@ -156,7 +158,8 @@ def chat_with_agent(request: ChatRequest):
         request.context_listing_ids,
         c_name,
         c_email,
-        c_phone
+        c_phone,
+        request.currency
     )
     return result
 
@@ -185,11 +188,12 @@ async def websocket_endpoint(websocket: WebSocket):
     client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
     client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
     client_phone = websocket.query_params.get("clientPhone", websocket.query_params.get("client_phone", ""))
+    currency = websocket.query_params.get("currency", "COP")
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
     
     try:
-        await local_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
+        await local_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids, currency)
     finally:
         local_gateway.disconnect(websocket)
 
@@ -205,11 +209,12 @@ async def websocket_legacy_endpoint(websocket: WebSocket, project_id: str):
     client_name = websocket.query_params.get("clientName", websocket.query_params.get("client_name", ""))
     client_email = websocket.query_params.get("clientEmail", websocket.query_params.get("client_email", ""))
     client_phone = websocket.query_params.get("clientPhone", websocket.query_params.get("client_phone", ""))
+    currency = websocket.query_params.get("currency", "COP")
     context_ids_str = websocket.query_params.get("context_listing_ids", "")
     context_listing_ids = context_ids_str.split(",") if context_ids_str else []
     
     try:
-        await local_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids)
+        await local_gateway.process_audio_stream(websocket, project_id, client_name, client_email, client_phone, context_listing_ids, currency)
     finally:
         local_gateway.disconnect(websocket)
 

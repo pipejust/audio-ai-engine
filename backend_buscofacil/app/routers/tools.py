@@ -7,6 +7,7 @@ router = APIRouter(tags=["Tools"])
 class ToolRequest(BaseModel):
     project_id: str
     args: Dict[str, Any]
+    currency: str = "COP"
 
 @router.post("/{function_name}")
 def execute_tool(function_name: str, request_data: ToolRequest, request: Request, background_tasks: BackgroundTasks = None):
@@ -24,6 +25,25 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
     project_id = request_data.project_id
     args = request_data.args
     
+    if function_name == "check_location_context":
+        location_name = args.get("location_name", "")
+        import os
+        import sys
+        
+        # Ensure the root path is in sys.path to safely import db_colombia
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        if root_dir not in sys.path:
+            sys.path.append(root_dir)
+            
+        try:
+            from db_colombia import setup_database, resolver_ubicacion
+            conn = setup_database()
+            resolver_response = resolver_ubicacion(location_name, conn)
+            conn.close()
+            return {"status": "success", "result_text": f"Dato geográfico: {resolver_response}. IMPORTANTE: Infórmaselo inmediatamente al cliente y hazle una pregunta corta de confirmación sobre la ciudad encontrada para estar seguros antes de buscar."}
+        except Exception as e:
+            return {"status": "error", "result_text": f"Falló al buscar contexto de lugar: {e}"}
+            
     if function_name == "consult_knowledge_base":
         query = args.get("query", "")
         retriever = agent_manager.vector_store.get_retriever(k=25, project_id=project_id)
@@ -274,6 +294,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         
             # Filter and update raw_properties with LIVE data
             valid_live_properties = []
+            req_currency = getattr(request_data, 'currency', 'COP')
+            rate = {'COP': 1, 'USD': 4000, 'EUR': 4300}.get(req_currency, 1)
+
             for rp in top_properties:
                 live_info = live_data_map.get(str(rp["id"]))
                 if live_info is None:
@@ -283,7 +306,10 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 # Update with verified fresh data
                 rp["images"] = live_info["images"]
                 if live_info["live_price"] > 0:
-                    rp["price"] = live_info["live_price"]
+                    rp["price"] = int(live_info["live_price"] / rate)
+                else:
+                    rp["price"] = int(rp["price"] / rate)
+                    
                 rp["agent_id_user"] = live_info["agent_id_user"]
                 rp["agent_first"] = live_info["agent_first"]
                 rp["agent_last"] = live_info["agent_last"]
@@ -300,13 +326,18 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 for i, d in enumerate(llm_docs):
                     prop_id = d.metadata.get("property_id", "DESCONOCIDO")
                     snippet = d.page_content[:350] + "..." if len(d.page_content) > 350 else d.page_content
-                    # Agregamos los datos del asesor recuperados dinámicamente si están disponibles
+                    # Agregamos los datos del asesor y precio convertido recuperados dinámicamente si están disponibles
                     agent_str = ""
+                    current_price = 0
                     for rp in raw_properties:
-                        if rp["id"] == prop_id and rp.get("agent_first"):
-                            agent_str = f" [Asesor: {rp.get('agent_first')} {rp.get('agent_last')}]"
+                        if rp["id"] == prop_id:
+                            if rp.get("agent_first"):
+                                agent_str = f" [Asesor: {rp.get('agent_first')} {rp.get('agent_last')}]"
+                            current_price = rp.get("price", 0)
                             break
-                    result_text += f"\\n[{i+1}] (ID_INMUEBLE: {prop_id}){agent_str} {snippet}\\n"
+                            
+                    currency_str = f" [PRECIO MÁXIMO EN {req_currency}: {current_price}]" if req_currency != 'COP' else ""
+                    result_text += f"\\n[{i+1}] (ID_INMUEBLE: {prop_id}){agent_str}{currency_str} {snippet}\\n"
                 result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE de cada opción por si el usuario pide seleccionar, agendar o ver detalles."
         else:
             result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."

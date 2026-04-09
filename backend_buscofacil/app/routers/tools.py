@@ -71,13 +71,35 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         min_price_numerics = re.findall(r"\d+", min_price_str.replace(".", "").replace(",", ""))
         min_price_val = int("".join(min_price_numerics)) if min_price_numerics else 0
         
+        # --- NEW LOCATION RESOLUTION ---
+        resolved_context = ""
+        import os, sys
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        if root_dir not in sys.path:
+            sys.path.append(root_dir)
+        try:
+            from db_colombia import setup_database, resolver_ubicacion
+            conn = setup_database()
+            if neighborhood:
+                resolved_context = resolver_ubicacion(neighborhood, conn)
+            elif city:
+                resolved_context = resolver_ubicacion(city, conn)
+            conn.close()
+        except:
+            pass
+            
+        print(f"🚀 Contexto de Ubicación Resuelto para Búsqueda (Velocidad Extendida): {resolved_context}")
+        
         search_query = f"propiedades disponibles inmueble"
         if tipo.lower() != "any": search_query += f" tipo {tipo}"
         if location.lower() != "any": search_query += f" en {location}"
+        if resolved_context and "No se encontró" not in resolved_context:
+            search_query += f" que pertenezcan a la zona geográfica exacta: {resolved_context}"
         
         safe_limit = min(int(limit), 20)
         
-        retriever = agent_manager.vector_store.get_retriever(k=300, project_id=project_id)
+        # Reducir K a 100 para máxima velocidad de respuesta (Sub-1s en DB Vectorial)
+        retriever = agent_manager.vector_store.get_retriever(k=100, project_id=project_id)
         raw_docs = retriever.invoke(search_query)
         
         filtered_docs = []

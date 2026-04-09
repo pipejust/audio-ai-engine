@@ -39,17 +39,27 @@ class VoiceGatewayManager:
 
     async def process_audio_stream(self, websocket: WebSocket, authenticated_project_id: str = None, client_name: str = "", client_email: str = "", client_phone: str = "", context_listing_ids: list[str] = None, currency: str = "COP"):
         """Enruta al bucle adecuado según el modo seleccionado."""
+        # 1. Logs de validación exigidos para depuración de Frontend
+        print(f"------------ INICIO ENRUTAMIENTO WS ------------")
+        print(f"🔍 URL QUERY PARAMS RECIBIDOS: {websocket.query_params}")
+        print(f"💱 MONEDA LOCAL INYECTADA: {currency}")
+        
         project_id = authenticated_project_id or websocket.query_params.get("project_id", "default")
         
         voice_id = websocket.query_params.get("voice", "")
+        voice_gender = websocket.query_params.get("voice_gender", "").lower()
+        print(f"🗣️ CONFIGURACIÓN DE VOZ FRONTEND -> voice_id: '{voice_id}' | voice_gender: '{voice_gender}'")
+        
         if not voice_id:
-            voice_gender = websocket.query_params.get("voice_gender", "").lower()
             if voice_gender == "femenino":
                 voice_id = "shimmer"
             elif voice_gender == "masculino":
                 voice_id = "echo"
             else:
-                voice_id = "alloy"
+                voice_id = "alloy"  # Por defecto si no manda nada
+                
+        print(f"🔊 VOZ FINAL SELECCIONADA PARA TTS: {voice_id}")
+        print(f"------------------------------------------------")
                 
         if context_listing_ids is None: context_listing_ids = []
         
@@ -143,6 +153,17 @@ class VoiceGatewayManager:
                                     
                                 if rms < 350:
                                     continue
+                                    
+                                # Interrupción inmediata por Barge-In (VAD por volumen RMS > 350)
+                                if voice_session.state.value == "speaking":
+                                    print("🛑 Interrupción Barge-in (RMS Alto). Deteniendo TTS...")
+                                    if self.current_task and not self.current_task.done():
+                                        self.current_task.cancel()
+                                    if r:
+                                        # Notificar interrupción por Pub/Sub usando session_id seguro extraído del websocket u objeto
+                                        await r.publish(f"voice:interrupt:{voice_session.id}", "barge_in")
+                                    else:
+                                        await voice_session.handle_interruption()
                                     
                                 has_useful_audio = True
                                 audio_buffer.extend(base64.b64decode(audio_b64))

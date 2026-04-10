@@ -75,8 +75,9 @@ class VoiceGatewayManager:
         session_id = f"sess_{id(websocket)}"
         try:
             r = await aioredis.from_url("redis://localhost:6379")
+            await r.ping()
         except Exception as e:
-            print(f"⚠️ Redis no disponible, barge-in degradado: {e}")
+            print(f"⚠️ Redis no disponible, barge-in local activado: {e}")
             r = None
 
         from app.core.prompts import get_agent_instructions

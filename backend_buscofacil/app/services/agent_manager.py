@@ -237,7 +237,8 @@ class AgentManager:
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
         import json
-        from app.routers.tools import get_agent_tools, execute_tool, ToolRequest
+        from app.routers.tools import execute_tool, ToolRequest
+        from app.core.prompts import get_agent_tools
 
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True)
         raw_tools = get_agent_tools(project_id)

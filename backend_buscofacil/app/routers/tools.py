@@ -72,6 +72,16 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         min_price_numerics = re.findall(r"\d+", min_price_str.replace(".", "").replace(",", ""))
         min_price_val = int("".join(min_price_numerics)) if min_price_numerics else 0
         
+        currency_code = request_data.currency.upper()
+        # Escalar la moneda a COP para que coincida con DB
+        if currency_code == "EUR":
+            max_price_val = max_price_val * 4200 if max_price_val < 100000000000 else max_price_val
+            min_price_val = min_price_val * 4200
+        elif currency_code == "USD" or currency_code == "CAD":
+            max_price_val = max_price_val * 4000 if max_price_val < 100000000000 else max_price_val
+            min_price_val = min_price_val * 4000
+            
+        
         # --- NEW LOCATION RESOLUTION ---
         resolved_context = ""
         import os, sys
@@ -127,15 +137,19 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 meta_loc = normalize_str(d.metadata.get("location_search", ""))
                 meta_type = normalize_str(d.metadata.get("property_type", ""))
                 
+                valid_location = True
                 if loc_norm:
-                    valid_location = True
-                    loc_terms = [t.strip() for t in loc_norm.replace(",", " ").split() if t.strip()]
-                    for term in loc_terms:
-                        if term not in meta_loc and term not in page_norm:
+                    loc_terms = [t.strip() for t in loc_norm.replace(",", " ").split() if t.strip() and len(t.strip()) > 3]
+                    if loc_terms:
+                        # Requerimos al menos 1 coincidencia en vez de TODAS para flexibilizar la búsqueda
+                        matched_any = False
+                        for term in loc_terms:
+                            if term in meta_loc or term in page_norm:
+                                matched_any = True
+                                break
+                        if not matched_any:
                             valid_location = False
-                            break
-                    if not valid_location:
-                        continue
+
                 type_matched = True
                 if type_norm:
                     if meta_type:
@@ -145,9 +159,12 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                         if type_norm not in page_norm:
                             type_matched = False
                 
-                if type_matched:
+                # Criterios de Inclusión
+                if type_matched and valid_location:
                     filtered_docs.append(d)
                 else:
+                    # Si al menos coincidió en ubicación o tipo (o es fallback general)
+                    # En este caso lo guardamos de fallback siempre y luego cortamos
                     fallback_docs.append(d)
                     
                 if len(filtered_docs) >= 100:
@@ -155,7 +172,8 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     
         is_fallback = False
         if not filtered_docs and fallback_docs:
-            filtered_docs = fallback_docs[:100]
+            # Tomar los 15 mejores fallbacks (como Pinecone ya los ordenó, los primeros son los más cercanos en texto)
+            filtered_docs = fallback_docs[:15]
             is_fallback = True
         
         raw_properties = []

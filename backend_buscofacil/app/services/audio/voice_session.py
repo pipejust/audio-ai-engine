@@ -164,6 +164,16 @@ class VoiceSession:
             currency=getattr(self, 'currency', 'COP'),
             websocket=self.ws
         ):
+            if token == "[CLEAR_MULETILLAS] ":
+                # Limpiar la cola de TTS de muletillas viejas pero NO abortar la que está sonando
+                while not self.tts_queue.empty():
+                    try:
+                        self.tts_queue.get_nowait()
+                        self.tts_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        break
+                continue
+                
             collector.append(token)
             await accumulator.push(token)
             

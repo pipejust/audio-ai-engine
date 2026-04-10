@@ -357,6 +357,7 @@ class AgentManager:
                             if not done:
                                 yield random.choice(muletillas) + " "
                                 
+                        yield "[CLEAR_MULETILLAS] "
                         data = tool_task.result()
                             
                         result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
@@ -368,19 +369,24 @@ class AgentManager:
                                     for prop in data["raw_properties"]:
                                         prop["ui_currency"] = currency
                                         prop["currency"] = currency
-                                    await websocket.send_json({"status": "search_results", "listings": data["raw_properties"]})
-                                except Exception: pass
+                                    payload = {"status": "search_results", "listings": data["raw_properties"]}
+                                    print(f"📡 ENVIANDO AL FRONTEND [LISTINGS]: {len(data['raw_properties'])} propiedades")
+                                    await websocket.send_json(payload)
+                                except Exception as e: print("Error enviando search results:", e)
                             if "action" in data:
                                 try:
                                     payload = {"status": "action", "action": data["action"]}
                                     if "listing_id" in data: payload["listing_id"] = data["listing_id"]
                                     if "listing_ids" in data: payload["listing_ids"] = data["listing_ids"]
+                                    print(f"📡 ENVIANDO AL FRONTEND [ACTION]: {payload}")
                                     await websocket.send_json(payload)
-                                except Exception: pass
+                                except Exception as e: print("Error enviando action:", e)
                             if "appointments" in data:
                                 try:
-                                    await websocket.send_json({"status": "appointments_created", "appointments": data["appointments"]})
-                                except Exception: pass
+                                    payload = {"status": "appointments_created", "appointments": data["appointments"]}
+                                    print(f"📡 ENVIANDO AL FRONTEND [APPOINTMENTS]: {len(data['appointments'])} citas")
+                                    await websocket.send_json(payload)
+                                except Exception as e: print("Error enviando appointments:", e)
                                 
                     except Exception as e:
                         result_text = f"Error: {e}"

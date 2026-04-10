@@ -296,9 +296,10 @@ class AgentManager:
                         print(f"❌ Tool Error in Text Chat: {e}")
                         result_text = f"Error ejecutando la herramienta: {e}"
 
-                    # Añadir la respuesta de la tool a la conversación
+                    import json
+                    json_content = json.dumps(data, ensure_ascii=False) if isinstance(data, dict) else result_text
                     messages.append(ToolMessage(
-                        content=result_text,
+                        content=json_content,
                         tool_call_id=tool_call_id,
                         name=function_name
                     ))

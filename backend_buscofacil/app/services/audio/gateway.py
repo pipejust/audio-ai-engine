@@ -66,13 +66,14 @@ class VoiceGatewayManager:
         voice_gender = websocket.query_params.get("voice_gender", "").lower()
         print(f"🗣️ CONFIGURACIÓN DE VOZ FRONTEND -> voice_id: '{voice_id}' | voice_gender: '{voice_gender}'")
         
-        if not voice_id:
-            if voice_gender == "femenino":
-                voice_id = "shimmer"
-            elif voice_gender == "masculino":
-                voice_id = "echo"
-            else:
-                voice_id = "alloy"  # Por defecto si no manda nada
+        # El frontend tiene botones explícitos de género. Si el usuario seleccionó uno,
+        # este debe tener prioridad sobre la configuración estática de la base de datos.
+        if voice_gender == "femenino":
+            voice_id = "shimmer"
+        elif voice_gender == "masculino":
+            voice_id = "echo"
+        elif not voice_id:
+            voice_id = "alloy"  # Por defecto si no manda nada
                 
         print(f"🔊 VOZ FINAL SELECCIONADA PARA TTS: {voice_id}")
         print(f"------------------------------------------------")

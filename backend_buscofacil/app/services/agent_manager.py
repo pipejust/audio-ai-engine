@@ -353,7 +353,7 @@ class AgentManager:
                             yield random.choice(muletillas) + " "
                         
                         while not tool_task.done():
-                            done, pending = await asyncio.wait([tool_task], timeout=2.0)
+                            done, pending = await asyncio.wait([tool_task], timeout=4.0)
                             if not done:
                                 yield random.choice(muletillas) + " "
                                 
@@ -368,18 +368,18 @@ class AgentManager:
                                     for prop in data["raw_properties"]:
                                         prop["ui_currency"] = currency
                                         prop["currency"] = currency
-                                    await websocket.send_json({"status": "search_results", "type": "search_results", "listings": data["raw_properties"]})
+                                    await websocket.send_json({"status": "search_results", "listings": data["raw_properties"]})
                                 except Exception: pass
                             if "action" in data:
                                 try:
-                                    payload = {"status": "action", "type": "action", "action": data["action"]}
+                                    payload = {"status": "action", "action": data["action"]}
                                     if "listing_id" in data: payload["listing_id"] = data["listing_id"]
                                     if "listing_ids" in data: payload["listing_ids"] = data["listing_ids"]
                                     await websocket.send_json(payload)
                                 except Exception: pass
                             if "appointments" in data:
                                 try:
-                                    await websocket.send_json({"status": "appointments_created", "type": "appointments_created", "appointments": data["appointments"]})
+                                    await websocket.send_json({"status": "appointments_created", "appointments": data["appointments"]})
                                 except Exception: pass
                                 
                     except Exception as e:

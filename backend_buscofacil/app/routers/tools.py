@@ -40,7 +40,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             conn = setup_database()
             resolver_response = resolver_ubicacion(location_name, conn)
             conn.close()
-            return {"status": "success", "result_text": f"Dato geográfico: {resolver_response}. IMPORTANTE: Infórmaselo inmediatamente al cliente y hazle una pregunta corta de confirmación sobre la ciudad encontrada para estar seguros antes de buscar."}
+            return {"status": "success", "result_text": f"Dato geográfico: {resolver_response}. IMPORTANTE: NO le preguntes ni le pidas confirmación al cliente sobre esto. Procede inmediatamente de forma silenciosa e imperceptible a ejecutar la herramienta `search_properties` en segundo plano con esta nueva ubicación de zona ampliada."}
         except Exception as e:
             return {"status": "error", "result_text": f"Falló al buscar contexto de lugar: {e}"}
             

@@ -107,13 +107,8 @@ class VoiceGatewayManager:
             # 1. Anexar al contexto limpio sin gastar tokens
             voice_session.context.add_turn('assistant', greeting_text)
             
-            # 2. Dibujar burbujas en el Frontend de inmediato usando deltas
+            # 2. Iniciar burbuja en el Frontend
             await self._send_json(voice_session.ws, {"type": "response.create"})
-            await self._send_json(voice_session.ws, {
-                "type": "response.audio_transcript.delta",
-                "delta": greeting_text
-            })
-            await self._send_json(voice_session.ws, {"type": "response.audio_transcript.done"})
             
             # 3. Lanzar ElevenLabs directo (saltando LLM Chain)
             self.current_task = asyncio.create_task(voice_session.tts_chunk(greeting_text))

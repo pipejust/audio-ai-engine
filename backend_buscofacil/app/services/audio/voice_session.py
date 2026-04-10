@@ -121,13 +121,6 @@ class VoiceSession:
         ):
             collector.append(token)
             await accumulator.push(token)
-            try:
-                await self.ws.send_json({
-                    "type": "response.audio_transcript.delta",
-                    "delta": token
-                })
-            except Exception:
-                pass
             
         await accumulator.flush()
  

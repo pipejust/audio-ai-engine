@@ -82,6 +82,9 @@ class TTSEngine:
         
         try:
             import base64
+            chars = text
+            chars_sent = 0
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, headers=headers) as resp:
                     resp.raise_for_status()
@@ -96,10 +99,28 @@ class TTSEngine:
                             await ws.send_json({"type": "response.audio.delta", "delta": b64_chunk})
                             
                             # Mantener sincronizado el Backend con la reproducción de audio (Half-Duplex sync)
-                            # 24kHz, mono, 16bit = 48000 bytes por segundo
                             chunk_seconds = len(chunk) / 48000.0
+                            
+                            # Sincronizar el texto (UI) para que salga a la misma velocidad que el audio (15 caracteres/seg)
+                            chars_to_send = int(chunk_seconds * 17) # 17 chars/sec avg
+                            if chars_to_send < 1: chars_to_send = 1
+                            if chars_sent < len(chars):
+                                delta_text = chars[chars_sent : chars_sent + chars_to_send]
+                                if delta_text:
+                                    try:
+                                        await ws.send_json({"type": "response.audio_transcript.delta", "delta": delta_text})
+                                    except Exception: pass
+                                chars_sent += chars_to_send
+                            
                             # Dormimos ligeramente menos que el tiempo real para mantener el streaming fluyendo sin pausas
                             await asyncio.sleep(chunk_seconds * 0.8)
+                    
+                    # Vaciar cualquier caracter faltante al final
+                    if chars_sent < len(chars):
+                        try:
+                            await ws.send_json({"type": "response.audio_transcript.delta", "delta": chars[chars_sent:]})
+                        except Exception: pass
+                        
         except asyncio.CancelledError:
             # Barge-in canceló la tarea — silenciar cliente
             await ws.send_json({'type': 'response.cancel'})

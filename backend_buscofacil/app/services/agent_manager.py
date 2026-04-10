@@ -17,7 +17,7 @@ class AgentManager:
         # El modelo LLM que funciona como cerebro del agente
         self.llm = ChatGroq(
             groq_api_key=groq_api_key,
-            model_name="llama-3.1-8b-instant",
+            model_name="llama-3.3-70b-versatile",
             temperature=0.7 # Temperatura más alta para que sea conversacional y natural
         )
         
@@ -39,7 +39,7 @@ class AgentManager:
                     "status": "success"
                 }
 
-            from langchain_openai import ChatOpenAI
+            
             from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
             from app.core.prompts import get_agent_tools
             from app.routers.tools import execute_tool, ToolRequest
@@ -99,8 +99,8 @@ class AgentManager:
                 })
 
             # Volver a OpenAI: gpt-4o-mini para estabilidad ABSOLUTA en Function Calling JSON
-            from langchain_openai import ChatOpenAI
-            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+            
+            llm = self.llm
             if chat_tools:
                 llm = llm.bind_tools(chat_tools)
 
@@ -250,13 +250,13 @@ class AgentManager:
         Soporta Agent Tool Calling en tiempo real."""
         if not query or not query.strip(): return
         
-        from langchain_openai import ChatOpenAI
+        
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
         import json
         from app.routers.tools import execute_tool, ToolRequest
         from app.core.prompts import get_agent_tools
 
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True)
+        llm = self.llm
         raw_tools = get_agent_tools(project_id)
         chat_tools = []
         for t in raw_tools:

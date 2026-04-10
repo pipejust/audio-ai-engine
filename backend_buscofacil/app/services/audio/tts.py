@@ -85,6 +85,24 @@ class TTSEngine:
             chars = text
             chars_sent = 0
             
+            def create_wav_header(data_size: int) -> bytes:
+                import struct
+                header = bytearray(44)
+                header[0:4] = b'RIFF'
+                header[4:8] = struct.pack('<I', 36 + data_size)
+                header[8:12] = b'WAVE'
+                header[12:16] = b'fmt '
+                header[16:20] = struct.pack('<I', 16)
+                header[20:22] = struct.pack('<H', 1) # PCM
+                header[22:24] = struct.pack('<H', 1)   # Mono
+                header[24:28] = struct.pack('<I', 24000) # Sample rate
+                header[28:32] = struct.pack('<I', 24000 * 2) # Byte rate
+                header[32:34] = struct.pack('<H', 2) # Block align
+                header[34:36] = struct.pack('<H', 16) # Bits per sample
+                header[36:40] = b'data'
+                header[40:44] = struct.pack('<I', data_size)
+                return bytes(header)
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, headers=headers) as resp:
                     resp.raise_for_status()
@@ -94,8 +112,9 @@ class TTSEngine:
                             print("🛑 TTS abortado por interrupción del usuario.")
                             break
                         if chunk:
-                            # Empaquetamos PCM plano en B64 para emular OpenAI Realtime WS exacto
-                            b64_chunk = base64.b64encode(chunk).decode("utf-8")
+                            # Inyectar cabecera WAV al vuelo para que el Frontend (React Native 'decodeAudioData') pueda leerlo como archivo independiente sin fallar
+                            wav_chunk = create_wav_header(len(chunk)) + chunk
+                            b64_chunk = base64.b64encode(wav_chunk).decode("utf-8")
                             await ws.send_json({"type": "response.audio.delta", "delta": b64_chunk})
                             
                             # Mantener sincronizado el Backend con la reproducción de audio (Half-Duplex sync)

@@ -161,25 +161,13 @@ class VoiceGatewayManager:
                                 audio_buffer.extend(raw_pcm)
                                 has_useful_audio = True
                                 
-                                # SUPER VAD EN TIEMPO REAL (< 1ms)
-                                # Detecta SI realmente hay voz humana cruzando, para tumbar la generación de la IA.
-                                if is_human_speech(raw_pcm, 24000):
-                                    if self.current_task and not self.current_task.done():
-                                        print("🛑 Super-VAD: Voz humana detectada superando ruido. Interrumpiendo IA!")
-                                        self.current_task.cancel()
-                                        if r:
-                                            await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
-                                        else:
-                                            await voice_session.handle_interruption()
                         elif data.get("type") == "input_audio_buffer.commit":
                             if not has_useful_audio or not audio_buffer:
-                                print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS bajo).")
+                                print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles.")
                                 continue
                             
-                            print("✅ Commit aceptado. Activando IA para procesar el audio aportado...")
-                            if self.current_task and not self.current_task.done():
-                                self.current_task.cancel()
-                                
+                            print("✅ Commit aceptado. Evaluando STT (Semantic Barge-in)...")
+                            
                             wav_io = io.BytesIO()
                             with wave.open(wav_io, 'wb') as wf:
                                 wf.setnchannels(1)
@@ -191,8 +179,9 @@ class VoiceGatewayManager:
                             audio_buffer.clear()
                             has_useful_audio = False
                             
-                            # Eliminar status reasoning porque rompe el schema de la UI
-                            self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, wav_bytes))
+                            # Pasar el task en curso sin cancelarlo todavía
+                            old_task = self.current_task
+                            self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, wav_bytes, old_task, r, session_id))
                     except Exception as e:
                         print(f"Error procesando JSON de frontend en Groq Pipeline: {e}")
                     continue
@@ -201,10 +190,8 @@ class VoiceGatewayManager:
                 if not audio_bytes:
                     continue
                     
-                if self.current_task and not self.current_task.done():
-                    self.current_task.cancel()
-                    
-                self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, audio_bytes, filename="audio.webm"))
+                old_task = self.current_task
+                self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, audio_bytes, old_task, r, session_id, filename="audio.webm"))
 
         except WebSocketDisconnect:
             self.disconnect(websocket)
@@ -215,7 +202,7 @@ class VoiceGatewayManager:
             if redis_task: redis_task.cancel()
             if r: await r.close()
 
-    async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes, filename: str = "audio.wav"):
+    async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes, old_task=None, r=None, session_id=None, filename: str = "audio.wav"):
         try:
             print(f"🎙️ Procesando {len(audio_bytes)} bytes de audio ({filename}) para streaming.")
             
@@ -227,6 +214,16 @@ class VoiceGatewayManager:
 
             if not transcription or not transcription.strip():
                 return
+                
+            # --- SEMANTIC BARGE-IN ---
+            # Si superó STT, es voz genuina y no ruido/alucinación STT. Interrumpimos IA ahora mismo.
+            if old_task and not old_task.done():
+                print("🛑 SEMANTIC BARGE-IN: Audio real validado. Interrumpiendo IA activa!")
+                old_task.cancel()
+                if r:
+                    await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
+                else:
+                    await voice_session.handle_interruption()
             
             print(f"🗣️ Usuario dijo: {transcription}")
             
@@ -244,7 +241,7 @@ class VoiceGatewayManager:
             await voice_session.respond(transcription)
 
         except asyncio.CancelledError:
-            print("🚫 Transcripción/Generación cancelada por Barge-In local.")
+            print("🚫 Transcripción/Generación cancelada por nuevo Turno (Barge-In).")
         except Exception as e:
             print(f"❌ Error procesando turno: {e}")
 

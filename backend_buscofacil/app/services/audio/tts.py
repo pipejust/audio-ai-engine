@@ -106,33 +106,48 @@ class TTSEngine:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, headers=headers) as resp:
                     resp.raise_for_status()
+                    
+                    full_pcm = bytearray()
                     async for chunk in resp.content.iter_chunked(4096):
-                        # Verificar si hubo barge-in antes de enviar cada chunk
+                        # Si hay un Barge-in mientras decodifica, abortamos rápido.
                         if redis and await redis.exists(f'voice:interrupt:{session_id}'):
-                            print("🛑 TTS abortado por interrupción del usuario.")
-                            break
+                            print("🛑 TTS abortado por interrupción del usuario (Descarga).")
+                            return
                         if chunk:
-                            # Inyectar cabecera WAV al vuelo para que el Frontend (React Native 'decodeAudioData') pueda leerlo como archivo independiente sin fallar
-                            wav_chunk = create_wav_header(len(chunk)) + chunk
-                            b64_chunk = base64.b64encode(wav_chunk).decode("utf-8")
-                            await ws.send_json({"type": "response.audio.delta", "delta": b64_chunk})
+                            full_pcm.extend(chunk)
                             
-                            # Mantener sincronizado el Backend con la reproducción de audio (Half-Duplex sync)
-                            chunk_seconds = len(chunk) / 48000.0
-                            
-                            # Sincronizar el texto (UI) para que salga a la misma velocidad que el audio (15 caracteres/seg)
-                            chars_to_send = int(chunk_seconds * 17) # 17 chars/sec avg
-                            if chars_to_send < 1: chars_to_send = 1
-                            if chars_sent < len(chars):
-                                delta_text = chars[chars_sent : chars_sent + chars_to_send]
-                                if delta_text:
-                                    try:
-                                        await ws.send_json({"type": "response.audio_transcript.delta", "delta": delta_text})
-                                    except Exception: pass
-                                chars_sent += chars_to_send
-                            
-                            # Dormimos ligeramente menos que el tiempo real para mantener el streaming fluyendo sin pausas
-                            await asyncio.sleep(chunk_seconds * 0.8)
+                    if not full_pcm:
+                        return
+                        
+                    # Pre-empacar TODO el audio como un solo archivo WAV estático para React Native (Fluidez cristalina, cero lluvia/stutter)
+                    wav_full = create_wav_header(len(full_pcm)) + full_pcm
+                    b64_full = base64.b64encode(wav_full).decode("utf-8")
+                    
+                    try:
+                        await ws.send_json({"type": "response.audio.delta", "delta": b64_full})
+                    except Exception as e:
+                        print(f"⚠️ WS cerrado antes de mandar audio: {e}")
+                        return
+                        
+                    # Simulamos el tipeo en vivo del transcript sincronizado con la duración total
+                    total_audio_seconds = len(full_pcm) / 48000.0
+                    chunk_duration = 0.05
+                    num_ticks = int(total_audio_seconds / chunk_duration)
+                    if num_ticks == 0: num_ticks = 1
+                    chars_per_tick = max(1, int(len(chars) / num_ticks))
+                    
+                    for _ in range(num_ticks):
+                        if redis and await redis.exists(f'voice:interrupt:{session_id}'):
+                            print("🛑 Tipeo abortado por Barge-In.")
+                            break
+                        if chars_sent < len(chars):
+                            delta_text = chars[chars_sent : chars_sent + chars_per_tick]
+                            try:
+                                await ws.send_json({"type": "response.audio_transcript.delta", "delta": delta_text})
+                            except Exception:
+                                return # WS cerrado abruptamente
+                            chars_sent += chars_per_tick
+                        await asyncio.sleep(chunk_duration)
                     
                     # Vaciar cualquier caracter faltante al final
                     if chars_sent < len(chars):

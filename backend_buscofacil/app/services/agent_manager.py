@@ -272,6 +272,9 @@ class AgentManager:
         llm_with_tools = llm.bind_tools(chat_tools)
         messages = history or [SystemMessage(content="Eres un asistente experto.")]
         
+        # Inyectar recordatorio crítico al final del contexto para forzar la atención del LLM
+        messages.append(SystemMessage(content="CRITICAL SYSTEM DIRECTIVE: You MUST respond in the EXACT same language that the user just used. If the user spoke English, your response MUST be entirely in English (without exception). Do NOT output manual XML/JSON tags like <function> in your speech."))
+        
         try:
             # Iteración 1: Ver si lanza texto directo o pide una tool
             is_tool_call = False

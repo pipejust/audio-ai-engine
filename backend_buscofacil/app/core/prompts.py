@@ -116,7 +116,9 @@ def get_agent_tools(project_id: str) -> list:
                 "description": "Cierra la vista detallada de un inmueble y regresa a la pantalla anterior con la lista principal de resultados. OBLIGATORIO: Úsala SIEMPRE que el usuario diga comandos como 'regresar', 'volver', 'lista anterior', 'volver a la lista', o 'cierra esto'. NUNCA uses open_property_details cuando el usuario te pide regresar o volver. NUNCA.",
                 "parameters": {
                     "type": "object",
-                    "properties": {}
+                    "properties": {
+                        "action_confirm": {"type": "boolean", "description": "Siempre true."}
+                    }
                 }
             },
             {
@@ -141,7 +143,9 @@ def get_agent_tools(project_id: str) -> list:
                 "description": "Finaliza la llamada interactiva con el cliente. Úsala SOLO cuando se hayan despedido y el cliente confirme que no necesita más ayuda.",
                 "parameters": {
                     "type": "object",
-                    "properties": {}
+                    "properties": {
+                        "action_confirm": {"type": "boolean", "description": "Siempre true."}
+                    }
                 }
             },
             {

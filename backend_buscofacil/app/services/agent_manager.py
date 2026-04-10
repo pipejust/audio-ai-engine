@@ -340,23 +340,17 @@ class AgentManager:
                         import asyncio
                         # Hilo en background para no bloquear
                         tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
-                        # Muletillas más profesionales sugeridas
-                        muletillas = [
-                            "Permítame verificar en nuestro sistema...",
-                            "Un momento por favor, estoy buscando...",
-                            "Estoy cruzando la información con la base de datos...",
-                            "Denos un instante mientras filtro los resultados...",
-                            "Revisando las opciones disponibles para usted..."
-                        ]
-                        import random
+                        
                         if func_name == "search_properties":
+                            muletillas = [
+                                "Permítame verificar en nuestro sistema...",
+                                "Un momento por favor, estoy revisando...",
+                                "Denos un instante mientras busco esto..."
+                            ]
+                            import random
                             yield random.choice(muletillas) + " "
                         
-                        while not tool_task.done():
-                            done, pending = await asyncio.wait([tool_task], timeout=2.0)
-                            if not done:
-                                yield random.choice(muletillas) + " "
-                                
+                        await tool_task
                         yield "[CLEAR_MULETILLAS] "
                         data = tool_task.result()
                             
@@ -380,6 +374,13 @@ class AgentManager:
                                     if "listing_ids" in data: payload["listing_ids"] = data["listing_ids"]
                                     print(f"📡 ENVIANDO AL FRONTEND [ACTION]: {payload}")
                                     await websocket.send_json(payload)
+                                    
+                                    # Forzar la respuesta verbal inmediatamente para evitar silencios del LLM
+                                    if data["action"] == "view_details":
+                                        yield "Aquí tienes los detalles en pantalla. ¿Qué te parece? "
+                                    elif data["action"] == "close_details":
+                                        yield "Listo, volvamos a la lista principal. "
+                                        
                                 except Exception as e: print("Error enviando action:", e)
                             if "appointments" in data:
                                 try:
@@ -394,8 +395,10 @@ class AgentManager:
                     messages.append(ToolMessage(content=result_text, tool_call_id=c["id"], name=func_name))
                 
                 # Iteración 2: Emitir veredicto final en stream
+                has_yielded = False
                 async for chunk in llm_with_tools.astream(messages):
                     if chunk.content:
+                        has_yielded = True
                         yield chunk.content
 
         except Exception as e:

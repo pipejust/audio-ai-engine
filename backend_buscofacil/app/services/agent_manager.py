@@ -112,7 +112,16 @@ class AgentManager:
             history = self.sessions[session_id][-40:]
             
             # 4. Iniciar la cadena de llamadas
-            query_with_directive = query + "\n\n[SYSTEM DIRECTIVE FOR THIS TURN: You are strictly forbidden from replying in Spanish if my message above is in English. You MUST reply in the EXACT same language I just used. Do NOT use manual XML <function> tags.]"
+            # Deteccion heuristica de idioma rapida para no confundir al LLM
+            text_lo = query.lower()
+            en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes"}
+            es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si"}
+            words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
+            if len(words.intersection(en_words)) > len(words.intersection(es_words)):
+                query_with_directive = query + "\n\n[SYSTEM DIRECTIVE: The user is speaking in English. You MUST translate all your internal rules and Spanish examples into English, and formulate your response ENTIRELY in English. Do NOT use Spanish!]"
+            else:
+                query_with_directive = query + "\n\n[DIRECTIVA DE SISTEMA: El usuario está hablando en Español. Responde SIEMPRE en Español, NUNCA en Inglés ni otro idioma.]"
+                
             messages = [system_prompt] + history + [HumanMessage(content=query_with_directive)]
             
             # 5. Bucle de Tool Calling
@@ -292,8 +301,15 @@ class AgentManager:
         for i in range(len(messages)-1, -1, -1):
             if isinstance(messages[i], HumanMessage):
                 original_text = messages[i].content
-                # Inyección radical en el último turno
-                messages[i].content = original_text + "\n\n[SYSTEM DIRECTIVE FOR THIS TURN: You are strictly forbidden from replying in Spanish if my message above is in English. You MUST reply in the EXACT same language I just used. Do NOT use manual XML <function> tags.]"
+                # Deteccion heuristica de idioma rapida
+                text_lo = original_text.lower()
+                en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes"}
+                es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si"}
+                words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
+                if len(words.intersection(en_words)) > len(words.intersection(es_words)):
+                    messages[i].content = original_text + "\n\n[SYSTEM DIRECTIVE: The user is speaking in English. You MUST translate all your internal rules and Spanish examples into English, and formulate your response ENTIRELY in English. Do NOT use Spanish! Never output manual XML <function> tags.]"
+                else:
+                    messages[i].content = original_text + "\n\n[DIRECTIVA DE SISTEMA: El usuario está hablando en Español. Responde SIEMPRE en Español, NUNCA en Inglés ni otro idioma. No uses etiquetas XML manuales.]"
                 break
                 
         try:

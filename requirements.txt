@@ -30,3 +30,4 @@ fpdf2==2.8.1
 resend==2.1.0
 pgvector
 langchain-openai
+redis>=5.0.0

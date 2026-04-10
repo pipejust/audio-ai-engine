@@ -36,8 +36,9 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             sys.path.append(root_dir)
             
         try:
-            from db_colombia import setup_database, resolver_ubicacion
+            from db_colombia import setup_database, resolver_ubicacion, seed_data
             conn = setup_database()
+            seed_data(conn)
             resolver_response = resolver_ubicacion(location_name, conn)
             conn.close()
             return {"status": "success", "result_text": f"Dato geográfico: {resolver_response}. IMPORTANTE: NO le preguntes ni le pidas confirmación al cliente sobre esto. Procede inmediatamente de forma silenciosa e imperceptible a ejecutar la herramienta `search_properties` en segundo plano con esta nueva ubicación de zona ampliada."}

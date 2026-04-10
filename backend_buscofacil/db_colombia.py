@@ -4,8 +4,8 @@ import urllib.request
 import re
 import unicodedata
 
-DB_NAME = "test.db"
-
+import os
+DB_NAME = os.path.join(os.path.dirname(__file__), "test.db")
 def normalize_text(text):
     if not text:
         return ""

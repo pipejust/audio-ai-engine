@@ -23,6 +23,7 @@ class AgentManager:
         
         self.vector_store = VectorStoreManager()
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
+        self.session_languages = {} # Persistir idioma por sesion
 
     def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP") -> dict:
         """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
@@ -112,15 +113,26 @@ class AgentManager:
             history = self.sessions[session_id][-40:]
             
             # 4. Iniciar la cadena de llamadas
-            # Deteccion heuristica de idioma rapida para no confundir al LLM
+            # Deteccion heuristica de idioma persistente
             text_lo = query.lower()
             en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes"}
             es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si"}
             words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
-            if len(words.intersection(en_words)) > len(words.intersection(es_words)):
-                query_with_directive = query + "\n\n[SYSTEM DIRECTIVE: The user is speaking in English. You MUST translate all your internal rules and Spanish examples into English, and formulate your response ENTIRELY in English. Do NOT use Spanish!]"
+            
+            # Solo actualizar el idioma si estamos en el turno 1 o detectamos fuerte intención de cambio
+            if session_id not in self.session_languages or len(words.intersection(en_words)) >= 2 or len(words.intersection(es_words)) >= 2:
+                if len(words.intersection(en_words)) > len(words.intersection(es_words)):
+                    self.session_languages[session_id] = "en"
+                elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
+                    self.session_languages[session_id] = "es"
+            
+            # Fallback a español si no hay detección
+            lang = self.session_languages.get(session_id, "es")
+            
+            if lang == "en":
+                query_with_directive = query + "\n\n[SYSTEM DIRECTIVE: Respond EXCLUSIVELY in English. DO NOT translate names of Colombian cities, but formulate your ENTIRE response in English. It is FORBIDDEN to respond in Spanish even if the user says a Spanish neighborhood.]"
             else:
-                query_with_directive = query + "\n\n[DIRECTIVA DE SISTEMA: El usuario está hablando en Español. Responde SIEMPRE en Español, NUNCA en Inglés ni otro idioma.]"
+                query_with_directive = query + "\n\n[DIRECTIVA DE SISTEMA: Responde EXCLUSIVAMENTE en Español, NUNCA en Inglés ni otro idioma. Prohibido usar etiquetas XML manuales.]"
                 
             messages = [system_prompt] + history + [HumanMessage(content=query_with_directive)]
             
@@ -324,15 +336,26 @@ class AgentManager:
         for i in range(len(messages)-1, -1, -1):
             if isinstance(messages[i], HumanMessage):
                 original_text = messages[i].content
-                # Deteccion heuristica de idioma rapida
+                # Deteccion heuristica de idioma persistente
                 text_lo = original_text.lower()
                 en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes"}
                 es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si"}
                 words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
-                if len(words.intersection(en_words)) > len(words.intersection(es_words)):
-                    messages[i].content = original_text + "\n\n[SYSTEM DIRECTIVE: The user is speaking in English. You MUST translate all your internal rules and Spanish examples into English, and formulate your response ENTIRELY in English. Do NOT use Spanish! Never output manual XML <function> tags.]"
+                
+                # Solo actualizar el idioma si estamos en el turno 1 o detectamos fuerte intención de cambio
+                stream_session_id = str(id(history)) if history else "anonymous"
+                if stream_session_id not in self.session_languages or len(words.intersection(en_words)) >= 2 or len(words.intersection(es_words)) >= 2:
+                    if len(words.intersection(en_words)) > len(words.intersection(es_words)):
+                        self.session_languages[stream_session_id] = "en"
+                    elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
+                        self.session_languages[stream_session_id] = "es"
+                
+                lang = self.session_languages.get(stream_session_id, "es")
+                
+                if lang == "en":
+                    messages[i].content = original_text + "\n\n[SYSTEM DIRECTIVE: Respond EXCLUSIVELY in English. DO NOT translate names of Colombian cities, but formulate your ENTIRE response in English. It is FORBIDDEN to respond in Spanish even if the user says a Spanish neighborhood. Never output manual XML <function> tags.]"
                 else:
-                    messages[i].content = original_text + "\n\n[DIRECTIVA DE SISTEMA: El usuario está hablando en Español. Responde SIEMPRE en Español, NUNCA en Inglés ni otro idioma. No uses etiquetas XML manuales.]"
+                    messages[i].content = original_text + "\n\n[DIRECTIVA DE SISTEMA: Responde EXCLUSIVAMENTE en Español, NUNCA en Inglés ni otro idioma. Prohibido usar etiquetas XML manuales.]"
                 break
                 
         try:

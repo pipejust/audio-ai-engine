@@ -173,10 +173,14 @@ class AgentManager:
                     # Intercepción Estricta de Presupuesto
                     if function_name == "search_properties":
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
-                            # Bloquear la ejecución
-                            data = "SISTEMA: No has preguntado el presupuesto. PREGUNTA VERBALMENTE al usuario cuál es su presupuesto. NUNCA inventes que buscaste. Di: 'Entiendo, antes de buscar, ¿tienes algún presupuesto?'"
-                            messages.append(ToolMessage(content=data, tool_call_id=tool_call_id, name=function_name))
-                            continue
+                            q_lo = query.lower()
+                            if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no":
+                                args["max_price"] = "100000000000"
+                            else:
+                                # Bloquear la ejecución
+                                data = "SISTEMA: No has preguntado el presupuesto. PREGUNTA VERBALMENTE al usuario cuál es su presupuesto. NUNCA inventes que buscaste. Di: 'Entiendo, antes de buscar, ¿tienes algún presupuesto?'"
+                                messages.append(ToolMessage(content=data, tool_call_id=tool_call_id, name=function_name))
+                                continue
                     
                     try:
                         # Ejecución local síncrona
@@ -302,14 +306,19 @@ class AgentManager:
                     
                     if func_name == "search_properties":
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
-                            # Force the LLM to output speech asking for budget
-                            data = "SISTEMA: CRÍTICO: No adjuntaste max_price. Tienes prohibido buscar sin presupuesto. IGNORA las instrucciones de herramientas. RESPÓNDELE al cliente con tu voz pidiéndole el presupuesto."
-                            messages.append(ToolMessage(content=data, tool_call_id=c["id"], name=func_name))
-                            
-                            # Recursively ask LLM to generate the voice question now that tool failed
-                            async for chunk in llm_with_tools.astream(messages):
-                                if chunk.content: yield chunk.content
-                            return # Terminate current tool attempt
+                            # Auto-override para evitar loops si el usuario ya dijo que no tiene
+                            q_lo = query.lower()
+                            if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no":
+                                args["max_price"] = "100000000000"
+                            else:
+                                # Force the LLM to output speech asking for budget
+                                data = "SISTEMA: CRÍTICO: No adjuntaste max_price. Tienes prohibido buscar sin presupuesto. IGNORA las instrucciones de herramientas. RESPÓNDELE al cliente con tu voz pidiéndole el presupuesto explícitamente."
+                                messages.append(ToolMessage(content=data, tool_call_id=c["id"], name=func_name))
+                                
+                                # Recursively ask LLM to generate the voice question now that tool failed
+                                async for chunk in llm_with_tools.astream(messages):
+                                    if chunk.content: yield chunk.content
+                                return # Terminate current tool attempt
 
                     # ---- MULETILLAS ACÚSTICAS ----
                     if func_name == "search_properties":

@@ -139,9 +139,8 @@ class OpenAIRealtimeManager:
                     bot_name = "Sol"
                 elif project_id == "xkape":
                     company_name_ov = "Xkape"
-                    
-                if voice_id == "shimmer" or voice_id == "nova":
-                    bot_name = "Isabella"
+                    if voice_id == "shimmer" or voice_id == "nova":
+                        bot_name = "Isabella"
                 
                 # Instrucción de rechazo activo de ruido
                 instructions += "\n\n[DIRECTIVA DE CANCELACIÓN DE RUIDO]\nEs probable que escuches ruidos de fondo, teclados, respiraciones, golpes o estática. SI EL AUDIO ES SOLO RUIDO, ININTELIGIBLE O NO CONTIENE UNA PREGUNTA DIRIGIDA A TI CLARAMENTE ARTICULADA, GUARDA SILENCIO ABSOLUTO (ignóralo sin decir absolutamente nada). JAMÁS digas 'No te pude oír bien' o '¿Puedes repetir?' a menos que el usuario haya estado activamente en medio de una conversación continua y se haya cortado. Sé inmune al ambiente ininteligible."

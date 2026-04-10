@@ -34,7 +34,8 @@ class AgentManager:
         
         try:
             if query == "system_greeting_trigger":
-                instant_response = f"Mucho gusto mi nombre es {self.bot_name} de {self.company_name} y te ayudaré con lo que necesites."
+                greeting_name = "Sol" if project_id == "buscofacil" else self.bot_name
+                instant_response = f"Mucho gusto mi nombre es {greeting_name} de {self.company_name} y te ayudaré con lo que necesites."
                 return {
                     "response": instant_response,
                     "status": "success"

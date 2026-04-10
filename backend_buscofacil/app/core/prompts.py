@@ -11,6 +11,7 @@ def get_agent_instructions(project_id: str, bot_name: str, company_name: str) ->
     hoy_str = datetime.now().strftime("%A %d de %B de %Y")
     
     if project_id == "buscofacil":
+        bot_name = "Sol"
         company_name_override = "Busco Fácil"
         project_instructions = (
             f"Proyecto: Busco Fácil. Eres un experto asesor inmobiliario trabajando para {company_name_override}. "

@@ -119,7 +119,8 @@ class VoiceGatewayManager:
         # Saludo Proactivo Inmediato (Ultra-Rápido sin pasar por OpenAI)
         try:
             nombre = client_name.split(' ')[0] if client_name and '@' not in client_name else ''
-            greeting_text = f"Hola {nombre}, soy tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?" if nombre else "Hola, soy tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
+            agent_name = "Sol, " if project_id == "buscofacil" else ""
+            greeting_text = f"Hola {nombre}, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?" if nombre else f"Hola, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
             
             # 1. Anexar al contexto limpio sin gastar tokens
             voice_session.context.add_turn('assistant', greeting_text)

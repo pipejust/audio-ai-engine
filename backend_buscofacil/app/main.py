@@ -141,7 +141,7 @@ def read_root():
     return {"message": "Welcome to MoshWasi AI Audio API. Multi-Agent Layer ready."}
 
 @app.post("/chat")
-def chat_with_agent(request: ChatRequest):
+async def chat_with_agent(request: ChatRequest):
     """
     Endpoint principal de texto. El Agent Manager evaluará la consulta,
     decidirá si necesita consultar la base vectorial, raspar una web, 

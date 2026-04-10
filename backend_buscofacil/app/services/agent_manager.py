@@ -133,13 +133,36 @@ class AgentManager:
             did_search = False
             
             for i in range(max_iterations):
-                response = llm.invoke(messages)
-                messages.append(response)
+                try:
+                    response = llm.invoke(messages)
+                    messages.append(response)
+                except Exception as e:
+                    if "validation error for aimessage" in str(e).lower() and "none is not an allowed value" in str(e).lower():
+                        print(f"⚠️ Detectado error de validación Llama-3 (args nulos). Pidiendo corrección al modelo...")
+                        # Append a message to guide the LLM to fix its hallucinated tool call format
+                        messages.append(HumanMessage(content="Your last action resulted in a Validation Error because you passed `null` for tool call parameters instead of an empty `{}` object. Please fix this and return a valid JSON object like {} for arguments if empty."))
+                        continue
+                    raise e
 
                 tool_calls = getattr(response, "tool_calls", None)
                 if not tool_calls and hasattr(response, "additional_kwargs"):
                     tool_calls = response.additional_kwargs.get("tool_calls", [])
                 
+                # Auto-recuperación de alucinación Groq Llama 3.3 en texto (Tags XML crudos)
+                if not tool_calls and isinstance(response.content, str) and "<function=" in response.content:
+                    import re, json, uuid
+                    match = re.search(r'<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})', response.content)
+                    if match:
+                        func_name = match.group(1)
+                        func_args_str = match.group(2) or "{}"
+                        try:
+                            # Limpiamos todo hasta la etiqueta original de function
+                            response.content = response.content.split("<function=")[0].strip()
+                            tool_calls = [{"name": func_name, "args": json.loads(func_args_str), "id": "call_" + str(uuid.uuid4())[:10]}]
+                            print(f"⚠️ Text Chat: Autorecuperado Tool Call de Llama-3: {func_name}")
+                        except Exception as e:
+                            print(f"❌ Error parseando JSON de alucinación Text Chat: {e}")
+
                 if not tool_calls:
                     # El LLM terminó de pensar y respondió en texto final
                     break
@@ -366,8 +389,8 @@ class AgentManager:
                 # Recuperación anti-alucinaciones Llama 3.3 de Groq (400 Bad Request / failed_generation)
                 if "failed_generation" in error_msg and "<function=" in error_msg:
                     print(f"⚠️ Detectado erro de validación Groq. Autorecuperando tool call... Error: {error_msg}")
-                    # regex tolerante a la ausencia del > de cierre o la inclusión de signos igual = extra
-                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", error_msg)
+                    # regex tolerante a la ausencia o presencia del > de cierre o la inclusión de signos igual = extra
+                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})", error_msg)
                     if match:
                         func_name = match.group(1)
                         func_args_str = match.group(2)
@@ -377,6 +400,10 @@ class AgentManager:
                     else:
                         print("Regex falló. Propagando excepción...")
                         raise inner_e
+                elif "validation error for aimessage" in error_msg.lower() and "none is not an allowed value" in error_msg.lower():
+                    print("⚠️ Detectado 'args': null en tool_call por Pydantic. Reintentando/ignorando tool call malformado.")
+                    yield "Un momento, estoy organizando mi respuesta..."
+                    return
                 else:
                     raise inner_e
                     

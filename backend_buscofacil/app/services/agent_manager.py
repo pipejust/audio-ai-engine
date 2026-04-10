@@ -245,7 +245,7 @@ class AgentManager:
                 "status": "error"
             }
 
-    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP", websocket = None):
+    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP", websocket = None, session_context = None):
         """Simplificación asíncrona de process_query para VoiceSession que retorna un iterador de tokens.
         Soporta Agent Tool Calling en tiempo real."""
         if not query or not query.strip(): return
@@ -411,6 +411,8 @@ class AgentManager:
                         result_text = f"Error: {e}"
                         
                     messages.append(ToolMessage(content=result_text, tool_call_id=c["id"], name=func_name))
+                    if session_context and func_name == "search_properties":
+                        session_context.tool_results['last_search'] = result_text
                 
                 # Iteración 2: Emitir veredicto final en stream
                 has_yielded = False

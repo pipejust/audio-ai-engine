@@ -156,13 +156,14 @@ class VoiceSession:
         
         async for token in self.agent_manager.process_query_stream(
             query=last_user_text, 
-            history=self.context.build_messages(),
+            history=self.context.build_messages(tool_context=self.context.tool_results.get('last_search')),
             project_id=getattr(self, 'project_id', 'buscofacil'),
             client_name=getattr(self, 'client_name', ''),
             client_email=getattr(self, 'client_email', ''),
             client_phone=getattr(self, 'client_phone', ''),
             currency=getattr(self, 'currency', 'COP'),
-            websocket=self.ws
+            websocket=self.ws,
+            session_context=self.context
         ):
             if token == "[CLEAR_MULETILLAS] ":
                 # Limpiar la cola de TTS de muletillas viejas pero NO abortar la que está sonando

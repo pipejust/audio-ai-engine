@@ -114,17 +114,27 @@ class AgentManager:
             
             # 4. Iniciar la cadena de llamadas
             # Deteccion heuristica de idioma persistente
-            text_lo = query.lower()
-            en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes"}
-            es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si"}
-            words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
-            
-            # Solo actualizar el idioma si estamos en el turno 1 o detectamos fuerte intención de cambio
-            if session_id not in self.session_languages or len(words.intersection(en_words)) >= 2 or len(words.intersection(es_words)) >= 2:
-                if len(words.intersection(en_words)) > len(words.intersection(es_words)):
-                    self.session_languages[session_id] = "en"
-                elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
-                    self.session_languages[session_id] = "es"
+            lang_detected = None
+            try:
+                import langdetect
+                lang_detected = langdetect.detect(query)
+                if lang_detected in ["es", "en"]:
+                    self.session_languages[session_id] = lang_detected
+            except Exception:
+                pass
+                
+            if lang_detected not in ["es", "en"]:
+                # Fallback a heuristica de palabras si langdetect falla o detecta otro idioma
+                text_lo = query.lower()
+                en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes", "baby", "hello", "hi"}
+                es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si", "hola", "amor"}
+                words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
+                
+                if session_id not in self.session_languages or len(words.intersection(en_words)) >= 1 or len(words.intersection(es_words)) >= 1:
+                    if len(words.intersection(en_words)) > len(words.intersection(es_words)):
+                        self.session_languages[session_id] = "en"
+                    elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
+                        self.session_languages[session_id] = "es"
             
             # Fallback a español si no hay detección
             lang = self.session_languages.get(session_id, "es")
@@ -294,9 +304,6 @@ class AgentManager:
                     ))
 
             final_text = response.content
-            if did_search:
-                if initial_llm_text:
-                    final_text = f"{initial_llm_text}\n\n{final_text}"
             
             # 6. Guardar solo el turno final en memoria limpia para reanudar más fácil
             self.sessions[session_id].append(HumanMessage(content=query))
@@ -307,6 +314,8 @@ class AgentManager:
                 "status": "success",
                 "listings": all_raw_properties
             }
+            if did_search and initial_llm_text:
+                result_payload["filler_text"] = initial_llm_text
             if ui_action:
                 result_payload["action"] = ui_action
                 result_payload["listing_id"] = ui_listing_id
@@ -366,19 +375,27 @@ class AgentManager:
         for i in range(len(messages)-1, -1, -1):
             if isinstance(messages[i], HumanMessage):
                 original_text = messages[i].content
-                # Deteccion heuristica de idioma persistente
-                text_lo = original_text.lower()
-                en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes"}
-                es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si"}
-                words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
-                
-                # Solo actualizar el idioma si estamos en el turno 1 o detectamos fuerte intención de cambio
                 stream_session_id = str(id(history)) if history else "anonymous"
-                if stream_session_id not in self.session_languages or len(words.intersection(en_words)) >= 2 or len(words.intersection(es_words)) >= 2:
-                    if len(words.intersection(en_words)) > len(words.intersection(es_words)):
-                        self.session_languages[stream_session_id] = "en"
-                    elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
-                        self.session_languages[stream_session_id] = "es"
+                lang_detected = None
+                try:
+                    import langdetect
+                    lang_detected = langdetect.detect(original_text)
+                    if lang_detected in ["es", "en"]:
+                        self.session_languages[stream_session_id] = lang_detected
+                except Exception:
+                    pass
+                    
+                if lang_detected not in ["es", "en"]:
+                    text_lo = original_text.lower()
+                    en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes", "baby", "hello", "hi"}
+                    es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si", "hola", "amor"}
+                    words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
+                    
+                    if stream_session_id not in self.session_languages or len(words.intersection(en_words)) >= 1 or len(words.intersection(es_words)) >= 1:
+                        if len(words.intersection(en_words)) > len(words.intersection(es_words)):
+                            self.session_languages[stream_session_id] = "en"
+                        elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
+                            self.session_languages[stream_session_id] = "es"
                 
                 lang = self.session_languages.get(stream_session_id, "es")
                 

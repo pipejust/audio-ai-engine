@@ -22,9 +22,9 @@ class TTSEngine:
             
         # Mapeo de voces del frontend a IDs específicos de ElevenLabs
         voice_map = {
-            "echo": os.getenv("ELEVENLABS_VOICE_ID", "GpnOed0ndzjm6Pc8JALF"), # Felipe (Latino Masculino)
-            "alloy": "EXAVITQu4vr4xnSDxMaL", # Bella (Latina/Neutral Femenina)
-            "shimmer": "EXAVITQu4vr4xnSDxMaL",
+            "echo": os.getenv("ELEVENLABS_VOICE_MALE", "GpnOed0ndzjm6Pc8JALF"), # Felipe (Latino Masculino)
+            "alloy": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"), # Latina/Neutral Femenina
+            "shimmer": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
         }
         
         target_voice_id = voice_map.get(voice_name, self.voice_id)
@@ -62,9 +62,9 @@ class TTSEngine:
             return
             
         voice_map = {
-            "echo": os.getenv("ELEVENLABS_VOICE_ID", "GpnOed0ndzjm6Pc8JALF"),
-            "alloy": "EXAVITQu4vr4xnSDxMaL",
-            "shimmer": "EXAVITQu4vr4xnSDxMaL",
+            "echo": os.getenv("ELEVENLABS_VOICE_MALE", "GpnOed0ndzjm6Pc8JALF"),
+            "alloy": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
+            "shimmer": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
         }
         target_voice_id = voice_map.get(voice_name, self.voice_id)
         

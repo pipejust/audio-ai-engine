@@ -143,18 +143,46 @@ class AgentManager:
             ui_action = None
             ui_listing_id = None
             did_search = False
+            initial_llm_text = ""
             
             for i in range(max_iterations):
                 try:
                     response = llm.invoke(messages)
                     messages.append(response)
                 except Exception as e:
-                    if "validation error for aimessage" in str(e).lower() and "none is not an allowed value" in str(e).lower():
+                    error_msg = str(e)
+                    if "validation error for aimessage" in error_msg.lower() and "none is not an allowed value" in error_msg.lower():
                         print(f"⚠️ Detectado error de validación Llama-3 (args nulos). Pidiendo corrección al modelo...")
                         # Append a message to guide the LLM to fix its hallucinated tool call format
                         messages.append(HumanMessage(content="Your last action resulted in a Validation Error because you passed `null` for tool call parameters instead of an empty `{}` object. Please fix this and return a valid JSON object like {} for arguments if empty."))
                         continue
-                    raise e
+                    elif "failed_generation" in error_msg and "<function=" in error_msg:
+                        import re, json, uuid
+                        print(f"⚠️ Detectado erro de validación Groq (Text Chat). Autorecuperando tool call... Error: {error_msg}")
+                        match = re.search(r'<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})', error_msg, re.DOTALL)
+                        if match:
+                            func_name = match.group(1)
+                            func_args_str = match.group(2) or "{}"
+                            try:
+                                # Creamos un AIMessage "fake" con el texto previo y la llamada nativa injectada
+                                fake_content = "Entendido."
+                                text_match = re.search(r"failed_generation':\s*'([^<]+)", error_msg)
+                                if text_match and text_match.group(1).strip():
+                                    fake_content = text_match.group(1).strip()
+                                
+                                tool_call_id = "call_" + str(uuid.uuid4())[:10]
+                                response = AIMessage(
+                                    content=fake_content, 
+                                    tool_calls=[{"name": func_name, "args": json.loads(func_args_str), "id": tool_call_id}]
+                                )
+                                messages.append(response)
+                            except Exception as parse_e:
+                                print(f"❌ Error parseando JSON de failed_generation en Text Chat: {parse_e}")
+                                raise e
+                        else:
+                            raise e
+                    else:
+                        raise e
 
                 tool_calls = getattr(response, "tool_calls", None)
                 if not tool_calls and hasattr(response, "additional_kwargs"):
@@ -163,17 +191,25 @@ class AgentManager:
                 # Auto-recuperación de alucinación Groq Llama 3.3 en texto (Tags XML crudos)
                 if not tool_calls and isinstance(response.content, str) and "<function=" in response.content:
                     import re, json, uuid
-                    match = re.search(r'<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})', response.content)
+                    match = re.search(r'<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})', response.content, re.DOTALL)
                     if match:
                         func_name = match.group(1)
                         func_args_str = match.group(2) or "{}"
                         try:
-                            # Limpiamos todo hasta la etiqueta original de function
-                            response.content = response.content.split("<function=")[0].strip()
+                            # Limpiamos todo hasta la etiqueta original de function y extraemos tool_calls
+                            clean_content = response.content.split("<function=")[0].strip()
+                            # MUTAR response original para que el LangChain history lo guarde LIMPIO
+                            response.content = clean_content
                             tool_calls = [{"name": func_name, "args": json.loads(func_args_str), "id": "call_" + str(uuid.uuid4())[:10]}]
                             print(f"⚠️ Text Chat: Autorecuperado Tool Call de Llama-3: {func_name}")
+                            # Y se lo agregamos manual al objeto response
+                            response.tool_calls = tool_calls
                         except Exception as e:
                             print(f"❌ Error parseando JSON de alucinación Text Chat: {e}")
+
+                if tool_calls and isinstance(response.content, str) and response.content.strip():
+                    if not initial_llm_text:
+                        initial_llm_text = response.content.strip()
 
                 if not tool_calls:
                     # El LLM terminó de pensar y respondió en texto final
@@ -221,7 +257,7 @@ class AgentManager:
                         did_search = True
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
                             q_lo = query.lower()
-                            if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no":
+                            if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no" or q_lo == "any" or "any" in q_lo or "cualquier" in q_lo:
                                 args["max_price"] = "100000000000"
                             else:
                                 # Bloquear la ejecución
@@ -259,14 +295,8 @@ class AgentManager:
 
             final_text = response.content
             if did_search:
-                import random
-                muletillas = [
-                    "Permítame verificar en nuestro sistema... ",
-                    "Denos un instante mientras busco esto... ",
-                    "Estoy cruzando la información con la base de datos... ",
-                    "Un momento por favor, estoy revisando las opciones... "
-                ]
-                final_text = random.choice(muletillas) + final_text
+                if initial_llm_text:
+                    final_text = f"{initial_llm_text}\n\n{final_text}"
             
             # 6. Guardar solo el turno final en memoria limpia para reanudar más fácil
             self.sessions[session_id].append(HumanMessage(content=query))
@@ -399,7 +429,7 @@ class AgentManager:
                 if not is_tool_call and hallucinated_xml:
                     import re
                     # Limpiamos el texto capturado para mayor seguridad
-                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", hallucinated_xml)
+                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", hallucinated_xml, re.DOTALL)
                     if match:
                         func_name = match.group(1)
                         func_args_str = match.group(2)
@@ -413,7 +443,7 @@ class AgentManager:
                 if "failed_generation" in error_msg and "<function=" in error_msg:
                     print(f"⚠️ Detectado erro de validación Groq. Autorecuperando tool call... Error: {error_msg}")
                     # regex tolerante a la ausencia o presencia del > de cierre o la inclusión de signos igual = extra
-                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})", error_msg)
+                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s>]*(\{.*?\})", error_msg, re.DOTALL)
                     if match:
                         func_name = match.group(1)
                         func_args_str = match.group(2)

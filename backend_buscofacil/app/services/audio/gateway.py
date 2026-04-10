@@ -108,7 +108,7 @@ class VoiceGatewayManager:
             voice_session.context.add_turn('assistant', greeting_text)
             
             # 2. Iniciar burbuja en el Frontend
-            await self._send_json(voice_session.ws, {"type": "response.create"})
+            await self._send_json(voice_session.ws, {"type": "response.created"})
             
             # 3. Lanzar ElevenLabs directo (saltando LLM Chain)
             self.current_task = asyncio.create_task(voice_session.tts_chunk(greeting_text))
@@ -132,6 +132,10 @@ class VoiceGatewayManager:
         try:
             while True:
                 message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    print("🚪 Desconexión nativa del socket detectada desde el frontend.")
+                    break
+                    
                 if "text" in message:
                     text_data = message["text"]
                     if "interruption" in text_data:
@@ -194,7 +198,7 @@ class VoiceGatewayManager:
                             audio_buffer.clear()
                             has_useful_audio = False
                             
-                            await self._send_json(voice_session.ws, {"status": "reasoning"})
+                            # Eliminar status reasoning porque rompe el schema de la UI
                             self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, wav_bytes))
                     except Exception as e:
                         print(f"Error procesando JSON de frontend en Groq Pipeline: {e}")
@@ -221,21 +225,17 @@ class VoiceGatewayManager:
     async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes, filename: str = "audio.wav"):
         try:
             print(f"🎙️ Procesando {len(audio_bytes)} bytes de audio ({filename}) para streaming.")
-            await self._send_json(voice_session.ws, {"status": "transcribing"})
             
             try:
                 transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes, filename)
             except Exception as e:
                 print(f"⚠️ Error STT (ignorado): {e}")
-                await self._send_json(voice_session.ws, {"status": "listening"})
                 return
 
             if not transcription or not transcription.strip():
-                await self._send_json(voice_session.ws, {"status": "listening"})
                 return
             
             print(f"🗣️ Usuario dijo: {transcription}")
-            await self._send_json(voice_session.ws, {"status": "reasoning", "transcription": transcription})
             
             # Emitir eventos nativos de OpenAI para que el frontend dibuje las burbujas de chat
             await self._send_json(voice_session.ws, {
@@ -246,14 +246,12 @@ class VoiceGatewayManager:
                     "content": [{"type": "input_text", "text": transcription}]
                 }
             })
-            await self._send_json(voice_session.ws, {"type": "response.create"})
+            await self._send_json(voice_session.ws, {"type": "response.created"})
             
             await voice_session.respond(transcription)
 
         except asyncio.CancelledError:
             print("🚫 Transcripción/Generación cancelada por Barge-In local.")
-            await self._send_json(voice_session.ws, {"status": "listening"})
         except Exception as e:
             print(f"❌ Error procesando turno: {e}")
-            await self._send_json(voice_session.ws, {"status": "listening"})
 

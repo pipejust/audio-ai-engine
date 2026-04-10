@@ -139,13 +139,8 @@ class VoiceGatewayManager:
                 if "text" in message:
                     text_data = message["text"]
                     if "interruption" in text_data:
-                        print("🛑 Interrupción detectada desde frontend. Cancelando generación actual.")
-                        if self.current_task and not self.current_task.done():
-                            self.current_task.cancel()
-                        if r:
-                            await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
-                        else:
-                            await voice_session.handle_interruption()
+                        # Ignorar el inestable "interruption: true" del frontend que detectaba cualquier ruido.
+                        # Ahora mandamos a evaluar todo al super-algoritmo matemático del Backend.
                         continue
                         
                     try:
@@ -154,30 +149,28 @@ class VoiceGatewayManager:
                         import wave
                         import math
                         import struct
+                        from app.services.audio.vad import is_human_speech
                         
                         data = json.loads(text_data)
                         if data.get("type") == "input_audio_buffer.append":
                             audio_b64 = data.get("audio", "")
                             if audio_b64:
                                 raw_pcm = base64.b64decode(audio_b64)
-                                count = len(raw_pcm) // 2
-                                if count > 0:
-                                    clean_pcm = raw_pcm[:count*2]
-                                    shorts = struct.unpack(f"<{count}h", clean_pcm)
-                                    rms = math.sqrt(sum(s*s for s in shorts) / count)
-                                else:
-                                    rms = 0
-                                    
-                                if rms < 50:
-                                    continue
-                                    
-                                # Mudo estricto matemático (Half-Duplex) para bloquear eco del parlante
-                                if voice_session.state.value == "speaking":
-                                    # Evitar que la propia voz del asistente dispare una interrupción
-                                    continue
-                                    
+                                
+                                # Acumular para transcripción final
+                                audio_buffer.extend(raw_pcm)
                                 has_useful_audio = True
-                                audio_buffer.extend(base64.b64decode(audio_b64))
+                                
+                                # SUPER VAD EN TIEMPO REAL (< 1ms)
+                                # Detecta SI realmente hay voz humana cruzando, para tumbar la generación de la IA.
+                                if is_human_speech(raw_pcm, 24000):
+                                    if self.current_task and not self.current_task.done():
+                                        print("🛑 Super-VAD: Voz humana detectada superando ruido. Interrumpiendo IA!")
+                                        self.current_task.cancel()
+                                        if r:
+                                            await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
+                                        else:
+                                            await voice_session.handle_interruption()
                         elif data.get("type") == "input_audio_buffer.commit":
                             if not has_useful_audio or not audio_buffer:
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles (RMS bajo).")

@@ -282,12 +282,45 @@ class AgentManager:
             consolidated = defaultdict(lambda: {"name": "", "args": "", "id": ""})
             
             try:
+                inside_function_tag = False
+                hallucinated_xml = ""
                 async for chunk in llm_with_tools.astream(messages):
                     if chunk.tool_call_chunks:
                         is_tool_call = True
                         tool_call_chunks.extend(chunk.tool_call_chunks)
                     elif chunk.content and not is_tool_call:
-                        yield chunk.content
+                        chunk_text = str(chunk.content)
+                        
+                        # Si encontramos el inicio de un tag, separamos la parte útil antes de iniciar modo captura
+                        if "<function" in chunk_text:
+                            part_before = chunk_text.split("<function")[0]
+                            inside_function_tag = True
+                            hallucinated_xml += chunk_text[len(part_before):] # Acumulamos desde <function
+                            chunk_text = part_before
+                        elif inside_function_tag:
+                            hallucinated_xml += chunk_text
+                            
+                        if inside_function_tag:
+                            if "</function>" in str(chunk.content):
+                                inside_function_tag = False
+                            if not chunk_text.strip():
+                                continue
+                                
+                        if chunk_text:
+                            yield chunk_text
+                            
+                # Al terminar el stream, revisar si extrajimos un tool manual
+                if not is_tool_call and hallucinated_xml:
+                    import re
+                    # Limpiamos el texto capturado para mayor seguridad
+                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", hallucinated_xml)
+                    if match:
+                        func_name = match.group(1)
+                        func_args_str = match.group(2)
+                        is_tool_call = True
+                        import uuid
+                        consolidated[0] = {"name": func_name, "args": func_args_str, "id": "call_" + str(uuid.uuid4())[:10]}
+
             except Exception as inner_e:
                 error_msg = str(inner_e)
                 # Recuperación anti-alucinaciones Llama 3.3 de Groq (400 Bad Request / failed_generation)

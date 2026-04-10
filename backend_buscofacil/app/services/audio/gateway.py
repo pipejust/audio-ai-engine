@@ -96,13 +96,30 @@ class VoiceGatewayManager:
         voice_session.client_phone = client_phone
         voice_session.currency = currency
 
-        # Saludo Proactivo Inmediato
+        # Saludo Proactivo Inmediato (Ultra-Rápido sin pasar por OpenAI)
         try:
-            self.current_task = asyncio.create_task(
-                voice_session.respond("El usuario acaba de abrir la aplicación. Ignora el contexto anterior si lo hay. Tu primera y única respuesta ahora mismo debe ser saludándolo cortamente en MÁXIMO 10 a 15 palabras. Ej: 'Hola soy tu asesor de BuscoFácil, ¿en qué te puedo ayudar?'")
-            )
+            nombre = client_name.split(' ')[0] if client_name and '@' not in client_name else ''
+            greeting_text = f"Hola {nombre}, soy tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?" if nombre else "Hola, soy tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
+            
+            # 1. Anexar al contexto limpio sin gastar tokens
+            voice_session.context.add_turn('assistant', greeting_text)
+            
+            # 2. Dibujar burbujas en el Frontend de inmediato
+            await self._send_json(voice_session.ws, {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": greeting_text}]
+                }
+            })
+            await self._send_json(voice_session.ws, {"type": "response.create"})
+            
+            # 3. Lanzar ElevenLabs directo (saltando LLM Chain)
+            self.current_task = asyncio.create_task(voice_session.tts_chunk(greeting_text))
+            
         except Exception as e:
-            print(f"Error en saludo: {e}")
+            print(f"Error en saludo directo: {e}")
 
         redis_task = None
         if r:
@@ -152,7 +169,7 @@ class VoiceGatewayManager:
                                 else:
                                     rms = 0
                                     
-                                if rms < 350:
+                                if rms < 50:
                                     continue
                                     
                                 # Mudo estricto matemático (Half-Duplex) para bloquear eco del parlante
@@ -224,6 +241,17 @@ class VoiceGatewayManager:
             
             print(f"🗣️ Usuario dijo: {transcription}")
             await self._send_json(voice_session.ws, {"status": "reasoning", "transcription": transcription})
+            
+            # Emitir eventos nativos de OpenAI para que el frontend dibuje las burbujas de chat
+            await self._send_json(voice_session.ws, {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": transcription}]
+                }
+            })
+            await self._send_json(voice_session.ws, {"type": "response.create"})
             
             await voice_session.respond(transcription)
 

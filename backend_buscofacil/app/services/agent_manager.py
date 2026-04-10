@@ -229,7 +229,7 @@ class AgentManager:
                 "status": "error"
             }
 
-    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP"):
+    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP", websocket = None):
         """Simplificación asíncrona de process_query para VoiceSession que retorna un iterador de tokens.
         Soporta Agent Tool Calling en tiempo real."""
         if not query or not query.strip(): return
@@ -305,6 +305,24 @@ class AgentManager:
                     try:
                         data = execute_tool(func_name, tool_req, MockRequest())
                         result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
+                        
+                        if websocket and isinstance(data, dict):
+                            if "raw_properties" in data:
+                                try:
+                                    await websocket.send_json({"status": "search_results", "listings": data["raw_properties"]})
+                                except Exception: pass
+                            if "action" in data:
+                                try:
+                                    payload = {"status": "action", "action": data["action"]}
+                                    if "listing_id" in data: payload["listing_id"] = data["listing_id"]
+                                    if "listing_ids" in data: payload["listing_ids"] = data["listing_ids"]
+                                    await websocket.send_json(payload)
+                                except Exception: pass
+                            if "appointments" in data:
+                                try:
+                                    await websocket.send_json({"status": "appointments_created", "appointments": data["appointments"]})
+                                except Exception: pass
+                                
                     except Exception as e:
                         result_text = f"Error: {e}"
                         

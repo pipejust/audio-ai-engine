@@ -116,10 +116,18 @@ class VoiceSession:
             client_name=getattr(self, 'client_name', ''),
             client_email=getattr(self, 'client_email', ''),
             client_phone=getattr(self, 'client_phone', ''),
-            currency=getattr(self, 'currency', 'COP')
+            currency=getattr(self, 'currency', 'COP'),
+            websocket=self.ws
         ):
             collector.append(token)
             await accumulator.push(token)
+            try:
+                await self.ws.send_json({
+                    "type": "response.audio_transcript.delta",
+                    "delta": token
+                })
+            except Exception:
+                pass
             
         await accumulator.flush()
  

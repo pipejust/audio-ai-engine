@@ -156,15 +156,38 @@ DESCRIPCIÓN: {observations}
 ENLACE PARA EL CLIENTE: {url}
 ---
 """
-        prop_type = prop.get("property_type_label", "").lower()
+        
+        # Mapeo oficial de WASI para id_property_type porque /property/search no envía el label
+        WASI_PROPERTY_TYPES = {
+            1: "casa", 2: "apartamento", 3: "local", 4: "oficina",
+            5: "lote", 6: "lote", 7: "finca", 8: "bodega",
+            10: "chalet", 11: "campestre", 12: "hotel", 13: "hotel",
+            14: "apartaestudio", 15: "consultorio", 16: "edificio",
+            17: "lote", 18: "hostal", 19: "condominio", 20: "casa",
+            21: "apartamento", 22: "cabaña", 23: "bodega", 24: "casa", 
+            25: "apartamento", 26: "garaje", 27: "finca", 28: "cabaña", 
+            30: "bodega", 31: "finca", 32: "lote", 33: "casa"
+        }
+        
+        prop_type = prop.get("property_type_label", "")
         if not prop_type:
-            # Fallback seguro solo si WASI no retorna label (muy raro)
+            id_type = prop.get("id_property_type")
+            if id_type:
+                try:
+                    prop_type = WASI_PROPERTY_TYPES.get(int(id_type), "")
+                except (ValueError, TypeError):
+                    pass
+                    
+        prop_type = prop_type.lower()
+        if not prop_type:
+            # Fallback a buscar en el título si por alguna razón falla Todo
             title_lower = title.lower()
             if "apartamento" in title_lower or "apto" in title_lower: prop_type = "apartamento"
             elif "casa" in title_lower: prop_type = "casa"
             elif "lote" in title_lower: prop_type = "lote"
             elif "finca" in title_lower: prop_type = "finca"
             elif "local" in title_lower: prop_type = "local"
+            else: prop_type = "inmueble"
 
         return {
             "text": formatted_text.strip(),

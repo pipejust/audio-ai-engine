@@ -98,8 +98,8 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         
         safe_limit = min(int(limit), 20)
         
-        # Reducir K a 100 para máxima velocidad de respuesta (Sub-1s en DB Vectorial)
-        retriever = agent_manager.vector_store.get_retriever(k=100, project_id=project_id)
+        # Aumentar K a 400 para asegurar que traemos el corpus completo y filtramos robustamente en Python.
+        retriever = agent_manager.vector_store.get_retriever(k=400, project_id=project_id)
         raw_docs = retriever.invoke(search_query)
         
         filtered_docs = []

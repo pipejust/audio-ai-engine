@@ -273,7 +273,7 @@ class AgentManager:
         messages = history or [SystemMessage(content="Eres un asistente experto.")]
         
         # Inyectar recordatorio crítico al final del contexto para forzar la atención del LLM
-        messages.append(SystemMessage(content="CRITICAL SYSTEM DIRECTIVE: You MUST respond in the EXACT same language that the user just used. If the user spoke English, your response MUST be entirely in English (without exception). Do NOT output manual XML/JSON tags like <function> in your speech."))
+        messages.append(SystemMessage(content="CRITICAL SYSTEM DIRECTIVE: You MUST stick to the primary language established in this conversation. If the conversation is in English, you MUST formulate ALL your responses entirely in English, even if the user occasionally slips a short word like 'sí' or 'ok'. Do NOT switch back and forth between languages. NEVER output manual XML/JSON tags like <function> in your speech."))
         
         try:
             # Iteración 1: Ver si lanza texto directo o pide una tool

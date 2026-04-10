@@ -373,8 +373,17 @@ class AgentManager:
         # Encontrar el último mensaje humano e inyectarle la orden condicionante
         from langchain_core.messages import HumanMessage
         for i in range(len(messages)-1, -1, -1):
-            if isinstance(messages[i], HumanMessage):
-                original_text = messages[i].content
+            msg = messages[i]
+            is_human = False
+            original_text = ""
+            if isinstance(msg, HumanMessage):
+                is_human = True
+                original_text = msg.content
+            elif isinstance(msg, dict) and msg.get("role") == "user":
+                is_human = True
+                original_text = msg.get("content", "")
+                
+            if is_human:
                 stream_session_id = str(id(history)) if history else "anonymous"
                 lang_detected = None
                 try:
@@ -400,9 +409,15 @@ class AgentManager:
                 lang = self.session_languages.get(stream_session_id, "es")
                 
                 if lang == "en":
-                    messages[i].content = original_text + "\n\n[SYSTEM DIRECTIVE: Respond EXCLUSIVELY in English. DO NOT translate names of Colombian cities, but formulate your ENTIRE response in English. It is FORBIDDEN to respond in Spanish even if the user says a Spanish neighborhood. Never output manual XML <function> tags.]"
+                    new_content = original_text + "\n\n[SYSTEM DIRECTIVE: Respond EXCLUSIVELY in English. DO NOT translate names of Colombian cities, but formulate your ENTIRE response in English. It is FORBIDDEN to respond in Spanish even if the user says a Spanish neighborhood. Never output manual XML <function> tags.]"
                 else:
-                    messages[i].content = original_text + "\n\n[DIRECTIVA DE SISTEMA: Responde EXCLUSIVAMENTE en Español, NUNCA en Inglés ni otro idioma. Prohibido usar etiquetas XML manuales.]"
+                    new_content = original_text + "\n\n[DIRECTIVA DE SISTEMA: Responde EXCLUSIVAMENTE en Español, NUNCA en Inglés ni otro idioma. Prohibido usar etiquetas XML manuales.]"
+                    
+                if isinstance(msg, HumanMessage):
+                    messages[i].content = new_content
+                else:
+                    messages[i]["content"] = new_content
+                    
                 break
                 
         try:

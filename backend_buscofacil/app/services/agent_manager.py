@@ -112,7 +112,8 @@ class AgentManager:
             history = self.sessions[session_id][-40:]
             
             # 4. Iniciar la cadena de llamadas
-            messages = [system_prompt] + history + [HumanMessage(content=query)]
+            query_with_directive = query + "\n\n[SYSTEM DIRECTIVE FOR THIS TURN: You are strictly forbidden from replying in Spanish if my message above is in English. You MUST reply in the EXACT same language I just used. Do NOT use manual XML <function> tags.]"
+            messages = [system_prompt] + history + [HumanMessage(content=query_with_directive)]
             
             # 5. Bucle de Tool Calling
             max_iterations = 3
@@ -120,6 +121,7 @@ class AgentManager:
             scheduled_appointments = []
             ui_action = None
             ui_listing_id = None
+            did_search = False
             
             for i in range(max_iterations):
                 response = llm.invoke(messages)
@@ -172,6 +174,7 @@ class AgentManager:
                     
                     # Intercepción Estricta de Presupuesto
                     if function_name == "search_properties":
+                        did_search = True
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
                             q_lo = query.lower()
                             if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no":
@@ -190,6 +193,9 @@ class AgentManager:
                         else:
                             result_text = data.get("result_text", "Done.")
                             if "raw_properties" in data:
+                                for prop in data["raw_properties"]:
+                                    prop["currency"] = currency
+                                    prop["ui_currency"] = currency
                                 all_raw_properties.extend(data["raw_properties"])
                             if "appointments" in data:
                                 scheduled_appointments.extend(data["appointments"])
@@ -208,6 +214,15 @@ class AgentManager:
                     ))
 
             final_text = response.content
+            if did_search:
+                import random
+                muletillas = [
+                    "Permítame verificar en nuestro sistema... ",
+                    "Denos un instante mientras busco esto... ",
+                    "Estoy cruzando la información con la base de datos... ",
+                    "Un momento por favor, estoy revisando las opciones... "
+                ]
+                final_text = random.choice(muletillas) + final_text
             
             # 6. Guardar solo el turno final en memoria limpia para reanudar más fácil
             self.sessions[session_id].append(HumanMessage(content=query))

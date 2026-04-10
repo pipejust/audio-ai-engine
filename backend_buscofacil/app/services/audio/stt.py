@@ -20,7 +20,6 @@ class STTEngine:
             completion = self.client.audio.transcriptions.create(
                 file=file_tuple,
                 model=self.model,
-                language="es",
                 response_format="json",
                 temperature=0.0
             )

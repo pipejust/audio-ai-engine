@@ -138,47 +138,49 @@ class TTSEngine:
                     except Exception as e:
                         print(f"⚠️ WS cerrado antes de mandar audio: {e}")
                         return
-                        
-                    # Simulamos el tipeo en vivo del transcript sincronizado con la duración total
-                    total_audio_seconds = len(full_pcm) / 48000.0
-                    chunk_duration = 0.05
-                    num_ticks = int(total_audio_seconds / chunk_duration)
-                    if num_ticks == 0: num_ticks = 1
-                    chars_per_tick = max(1, int(len(chars) / num_ticks))
-                    
-                    for _ in range(num_ticks):
-                        if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
-                            print("🛑 Tipeo abortado por Barge-In.")
-                            # Intentar detener React Native usando el comando oficial de OpenAI (en caso el front lo soporte)
-                            try:
-                                await ws.send_json({"type": "response.cancel"})
-                            except: pass
-                            break
-                        if chars_sent < len(chars):
-                            delta_text = chars[chars_sent : chars_sent + chars_per_tick]
-                            try:
-                                await ws.send_json({"type": "response.audio_transcript.delta", "delta": delta_text})
-                            except Exception:
-                                return # WS cerrado abruptamente
-                            chars_sent += chars_per_tick
-                        await asyncio.sleep(chunk_duration)
-                    
-                    # Vaciar cualquier caracter faltante al final
-                    if chars_sent < len(chars):
-                        try:
-                            await ws.send_json({"type": "response.audio_transcript.delta", "delta": chars[chars_sent:]})
-                        except Exception: pass
-
-                    # Sellar oficialmente la caja de texto en la vista UI para demarcar el final completo
-                    try:
-                        await ws.send_json({"type": "response.audio_transcript.done"})
-                    except Exception: pass
+                    # Disparar tipeo de transcripción sin bloquear el LLM
+                    asyncio.create_task(self._simulate_typing(chars, len(full_pcm), ws, session_id, redis, voice_session))
                         
         except asyncio.CancelledError:
-            # Barge-in canceló la tarea — silenciar cliente cerrando el transcript de urgencia
-            try:
-                await ws.send_json({'type': 'response.audio_transcript.done'})
+            try: await ws.send_json({'type': 'response.audio_transcript.done'})
             except Exception: pass
             raise
         except Exception as e:
             print(f"❌ Error en TTS Streaming HTTP: {e}")
+
+    async def _simulate_typing(self, chars, pcm_len, ws, session_id, redis, voice_session):
+        import asyncio
+        chars = " " + chars
+        total_audio_seconds = pcm_len / 48000.0
+        chunk_duration = 0.05
+        num_ticks = int(total_audio_seconds / chunk_duration)
+        if num_ticks == 0: num_ticks = 1
+        chars_per_tick = max(1, int(len(chars) / num_ticks))
+        chars_sent = 0
+        
+        try:
+            for _ in range(num_ticks):
+                if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
+                    print("🛑 Tipeo abortado por Barge-In.")
+                    try: await ws.send_json({"type": "response.cancel"})
+                    except: pass
+                    break
+                if chars_sent < len(chars):
+                    delta_text = chars[chars_sent : chars_sent + chars_per_tick]
+                    try: await ws.send_json({"type": "response.audio_transcript.delta", "delta": delta_text})
+                    except Exception: return # WS cerrado
+                    chars_sent += chars_per_tick
+                await asyncio.sleep(chunk_duration)
+            
+            # Vaciar faltantes
+            if chars_sent < len(chars):
+                try: await ws.send_json({"type": "response.audio_transcript.delta", "delta": chars[chars_sent:]})
+                except Exception: pass
+
+            try: await ws.send_json({"type": "response.audio_transcript.done"})
+            except Exception: pass
+            
+        except asyncio.CancelledError:
+            try: await ws.send_json({'type': 'response.audio_transcript.done'})
+            except Exception: pass
+            raise

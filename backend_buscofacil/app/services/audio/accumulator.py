@@ -20,17 +20,13 @@ class SentenceAccumulator:
         # Puntuación de fin de oración (Emite siempre que haya un punto, incluso si son 1-2 palabras)
         if text and text[-1] in self.PUNCTUATION_END:
             should_emit = True
- 
-        # Arranque táctico (si no hay punto pero ya hay suficientes palabras para empezar a hablar)
-        elif not self.first_emitted and n >= self.FIRST_EMIT_TOKENS:
-            should_emit = True
             
         # Puntuación de pausa (coma, punto y coma)
         elif text and text[-1] in self.PUNCTUATION_PAUSE and n >= 12:
             should_emit = True
  
         # Forzado — evita bloqueo si el LLM no puntúa
-        elif n >= self.FORCE_EMIT_TOKENS:
+        elif n >= self.FORCE_EMIT_TOKENS and ((token and token[-1].isspace()) or text[-1] in self.PUNCTUATION_END):
             should_emit = True
  
         if should_emit and len(text) >= self.MIN_EMIT_TOKENS:

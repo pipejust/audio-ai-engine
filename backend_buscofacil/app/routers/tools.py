@@ -375,7 +375,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                     currency_str = f" [PRECIO MÁXIMO EN {req_currency}: {current_price}]" if req_currency != 'COP' else ""
                     result_text += f"\\n[{i+1}] (ID_INMUEBLE: {prop_id}){agent_str}{currency_str} {snippet}\\n"
                 
-                result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE de cada opción por si el usuario pide seleccionar, agendar o ver detalles."
+                result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE real (ej. 8586932) de cada opción por si el usuario pide seleccionar, agendar o ver detalles. JAMÁS uses el número de viñeta o posición como ID."
                 if is_fallback:
                     result_text += f"\\n\\n**¡CRÍTICO! ALERTA DE FALLBACK:** Como asistente, NO CUMPLES con el tipo exacto de '{tipo}' que el usuario pidió (Te lo informamos porque estas propiedades mostradas son aproxmaciones de tipo distinto). ESTÁS OBLIGADO A HACER ESTO A CONTINUACIÓN: Diles de frente 'No contamos  actualmente con {tipo} exacto en {location}, pero no te preocupes, tengo estas excelentes opciones similares...'. Luego descríbelas empáticamente."
         else:

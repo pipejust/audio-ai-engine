@@ -84,10 +84,12 @@ class VoiceSession:
 
     async def handle_interruption(self):
         self.interrupted = True  # In-memory flag para abortar TTS
+        did_interrupt_something = False
 
         # 1. Cancelar LLM si sigue generando
         if self.llm_task and not self.llm_task.done():
             self.llm_task.cancel()
+            did_interrupt_something = True
             try:
                 await self.llm_task
             except asyncio.CancelledError:
@@ -98,22 +100,25 @@ class VoiceSession:
             try:
                 self.tts_queue.get_nowait()
                 self.tts_queue.task_done()
+                did_interrupt_something = True
             except asyncio.QueueEmpty:
                 break
  
         # 2. Cancelar TTS activa
         if self.tts_task and not self.tts_task.done():
             self.tts_task.cancel()
+            did_interrupt_something = True
             try:
                 await self.tts_task
             except asyncio.CancelledError:
                 pass
  
         # 3. Notificar cliente — detener reproducción de manera segura en esquema OpenAI
-        try:
-            await self.ws.send_json({'type': 'response.audio_transcript.done'})
-        except:
-            pass
+        if did_interrupt_something:
+            try:
+                await self.ws.send_json({'type': 'response.audio_transcript.done'})
+            except:
+                pass
  
         # 4. Cambiar estado
         self.state = VoiceState.LISTENING

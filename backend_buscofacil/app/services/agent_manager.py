@@ -277,24 +277,42 @@ class AgentManager:
             is_tool_call = False
             tool_call_chunks = []
             
-            async for chunk in llm_with_tools.astream(messages):
-                if chunk.tool_call_chunks:
-                    is_tool_call = True
-                    tool_call_chunks.extend(chunk.tool_call_chunks)
-                elif chunk.content and not is_tool_call:
-                    yield chunk.content
+            from collections import defaultdict
+            import json, re, uuid
+            consolidated = defaultdict(lambda: {"name": "", "args": "", "id": ""})
+            
+            try:
+                async for chunk in llm_with_tools.astream(messages):
+                    if chunk.tool_call_chunks:
+                        is_tool_call = True
+                        tool_call_chunks.extend(chunk.tool_call_chunks)
+                    elif chunk.content and not is_tool_call:
+                        yield chunk.content
+            except Exception as inner_e:
+                error_msg = str(inner_e)
+                # Recuperación anti-alucinaciones Llama 3.3 de Groq (400 Bad Request / failed_generation)
+                if "failed_generation" in error_msg and "<function=" in error_msg:
+                    print("⚠️ Detectado erro de validación Groq. Autorecuperando tool call...")
+                    match = re.search(r"<function=([a-zA-Z0-9_]+)\s*(\{.*?\})></function>", error_msg)
+                    if match:
+                        func_name = match.group(1)
+                        func_args_str = match.group(2)
+                        
+                        is_tool_call = True
+                        consolidated[0] = {"name": func_name, "args": func_args_str, "id": "call_" + str(uuid.uuid4())[:10]}
+                    else:
+                        raise inner_e
+                else:
+                    raise inner_e
                     
             if is_tool_call:
-                # Armar el Tool Call consolidado
-                from collections import defaultdict
-                consolidated = defaultdict(lambda: {"name": "", "args": "", "id": ""})
-                
-                for tcc in tool_call_chunks:
-                    idx = tcc.get("index")
-                    if tcc.get("name"): consolidated[idx]["name"] += tcc["name"]
-                    if tcc.get("args"): consolidated[idx]["args"] += tcc["args"]
-                    if tcc.get("id"): consolidated[idx]["id"] = tcc["id"]
-
+                # Si fallamos la auto-recuperación y tenemos chunks reales, los ensamblamos
+                if not consolidated:
+                    for tcc in tool_call_chunks:
+                        idx = tcc.get("index")
+                        if tcc.get("name"): consolidated[idx]["name"] += tcc["name"]
+                        if tcc.get("args"): consolidated[idx]["args"] += tcc["args"]
+                        if tcc.get("id"): consolidated[idx]["id"] = tcc["id"]
                 messages.append(AIMessage(content="", tool_calls=[
                     {"name": c["name"], "args": json.loads(c["args"]), "id": c["id"]} for c in consolidated.values()
                 ]))
@@ -396,10 +414,19 @@ class AgentManager:
                 
                 # Iteración 2: Emitir veredicto final en stream
                 has_yielded = False
-                async for chunk in llm_with_tools.astream(messages):
-                    if chunk.content:
-                        has_yielded = True
-                        yield chunk.content
+                try:
+                    async for chunk in llm_with_tools.astream(messages):
+                        if chunk.content:
+                            has_yielded = True
+                            yield chunk.content
+                except Exception as inner_e2:
+                    error_msg2 = str(inner_e2)
+                    if "failed_generation" in error_msg2:
+                        print("⚠️ Groq alucinó un tool call en la Iteración 2. Silenciando error.")
+                        if not has_yielded:
+                            yield "Aquí tienes los resultados de la búsqueda. Cuéntame qué te parecen. "
+                    else:
+                        raise inner_e2
 
         except Exception as e:
             print(f"❌ Error en process_query_stream: {e}")

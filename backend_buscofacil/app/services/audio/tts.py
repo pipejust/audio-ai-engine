@@ -138,8 +138,8 @@ class TTSEngine:
                     except Exception as e:
                         print(f"⚠️ WS cerrado antes de mandar audio: {e}")
                         return
-                    # Disparar tipeo de transcripción sin bloquear el LLM
-                    asyncio.create_task(self._simulate_typing(chars, len(full_pcm), ws, session_id, redis, voice_session))
+                    # Tipeo secuencial ESTRICTO (bloqueante) para evitar audios y textos sobrepuestos
+                    await self._simulate_typing(chars, len(full_pcm), ws, session_id, redis, voice_session)
                         
         except asyncio.CancelledError:
             try: await ws.send_json({'type': 'response.audio_transcript.done'})
@@ -163,6 +163,9 @@ class TTSEngine:
                 if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
                     print("🛑 Tipeo abortado por Barge-In.")
                     try: await ws.send_json({"type": "response.cancel"})
+                    except: pass
+                    # Enviar clear para frontend
+                    try: await ws.send_json({"type": "response.audio.clear"})
                     except: pass
                     break
                 if chars_sent < len(chars):

@@ -57,6 +57,13 @@ class VoiceSession:
         while True:
             text = await self.tts_queue.get()
             if text == "[STOP]": break
+            if text == "[TURN_DONE]":
+                try:
+                    await self.ws.send_json({'type': 'response.audio_transcript.done'})
+                except Exception:
+                    pass
+                self.tts_queue.task_done()
+                continue
             
             self.state = VoiceState.SPEAKING
             if not text.strip(): 
@@ -120,7 +127,7 @@ class VoiceSession:
  
         accumulator = SentenceAccumulator(on_chunk=self.tts_chunk)
         assistant_text = []
- 
+
         try:
             self.llm_task = asyncio.create_task(
                 self._stream_llm(accumulator, assistant_text, user_text)
@@ -136,7 +143,7 @@ class VoiceSession:
             raise
         finally:
             self.state = VoiceState.LISTENING
- 
+
     async def _stream_llm(self, accumulator, collector, last_user_text: str):
         # Delegate real query processing and tool calling to AgentManager but streamed
         
@@ -154,11 +161,9 @@ class VoiceSession:
             await accumulator.push(token)
             
         await accumulator.flush()
-        
-        try:
-            await self.ws.send_json({'type': 'response.audio_transcript.done'})
-        except Exception:
-            pass
- 
+
+        # Enviar señal de fin de turno una vez TODO se haya reproducido
+        await self.tts_queue.put("[TURN_DONE]")
+
     async def tts_chunk(self, text: str):
         await self.tts_queue.put(text)

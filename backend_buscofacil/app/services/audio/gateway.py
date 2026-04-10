@@ -111,7 +111,8 @@ class VoiceGatewayManager:
             await self._send_json(voice_session.ws, {"type": "response.created"})
             
             # 3. Lanzar ElevenLabs directo (saltando LLM Chain)
-            self.current_task = asyncio.create_task(voice_session.tts_chunk(greeting_text))
+            await voice_session.tts_chunk(greeting_text)
+            await voice_session.tts_queue.put("[TURN_DONE]")
             
         except Exception as e:
             print(f"Error en saludo directo: {e}")

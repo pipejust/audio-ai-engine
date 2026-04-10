@@ -346,11 +346,11 @@ class AgentManager:
                         if not done:
                             # Tarda más de 0.8s -> Disparar muletilla para rellenar silencio
                             if func_name == "search_properties":
-                                yield "Un momento, estoy verificando el inventario... "
+                                yield "Un momento, estoy verificando el inventario. "
                             elif func_name == "schedule_visits":
-                                yield "Claro, dame un segundo para revisar la agenda... "
+                                yield "Claro, revisando la agenda. "
                             elif func_name == "check_location_context":
-                                yield "Revisando ubicación, un instante... "
+                                yield "Revisando ubicación. "
                                 
                             data = await tool_task # Esperar pacientemente el resto del tiempo
                         else:

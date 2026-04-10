@@ -113,7 +113,7 @@ def get_agent_tools(project_id: str) -> list:
             {
                 "type": "function",
                 "name": "close_property_details",
-                "description": "Cierra la vista detallada de un inmueble y regresa a la pantalla anterior con la lista principal de resultados. Úsala INMEDIATAMENTE si el usuario dice 'regresar', 'volver a la lista', o 'cierra esto'.",
+                "description": "Cierra la vista detallada de un inmueble y regresa a la pantalla anterior con la lista principal de resultados. OBLIGATORIO: Úsala SIEMPRE que el usuario diga comandos como 'regresar', 'volver', 'lista anterior', 'volver a la lista', o 'cierra esto'. NUNCA uses open_property_details cuando el usuario te pide regresar o volver. NUNCA.",
                 "parameters": {
                     "type": "object",
                     "properties": {}

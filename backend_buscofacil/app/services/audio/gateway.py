@@ -44,7 +44,7 @@ class VoiceGatewayManager:
         print(f"🔍 URL QUERY PARAMS RECIBIDOS: {websocket.query_params}")
         print(f"💱 MONEDA LOCAL INYECTADA: {currency}")
         
-        project_id = authenticated_project_id or websocket.query_params.get("project_id", "default")
+        project_id = authenticated_project_id or websocket.query_params.get("project_id", "buscofacil")
         
         voice_id = websocket.query_params.get("voice", "")
         
@@ -267,7 +267,6 @@ class VoiceGatewayManager:
                     "content": [{"type": "input_text", "text": transcription}]
                 }
             })
-            await self._send_json(voice_session.ws, {"type": "response.created"})
             
             await voice_session.respond(transcription)
 

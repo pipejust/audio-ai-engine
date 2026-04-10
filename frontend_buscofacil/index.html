@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Busco Fácil - Asistente de Voz IA para Cotizaciones TI</title>
+    <meta name="description" content="Busco Fácil es tu asistente virtual de voz con Inteligencia Artificial diseñado para generar cotizaciones de tecnología y servicios TI al instante. Conversa en tiempo real.">
+    <meta name="keywords" content="inteligencia artificial, asistente de voz, cotizaciones TI, tecnología, B2B, automatización, Busco Fácil">
+    
+    <!-- Open Graph / social media -->
+    <meta property="og:title" content="Busco Fácil - Asistente de Voz IA para Cotizaciones TI">
+    <meta property="og:description" content="Genera cotizaciones de tecnología al instante conversando con nuestra IA.">
+    <meta property="og:type" content="website">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .orb-container {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .orb {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #3b82f6 0%, #1d4ed8 100%);
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .orb.listening {
+            animation: pulse-listen 1.5s infinite;
+            background: radial-gradient(circle, #f43f5e 0%, #be123c 100%);
+            box-shadow: 0 0 50px rgba(244, 63, 94, 0.8);
+        }
+
+        .orb.speaking {
+            animation: pulse-speak 0.8s infinite alternate;
+            background: radial-gradient(circle, #10b981 0%, #047857 100%);
+            box-shadow: 0 0 60px rgba(16, 185, 129, 0.8);
+        }
+
+        .orb.thinking {
+            animation: spin 2s linear infinite;
+            background: radial-gradient(circle, #8b5cf6 0%, #6d28d9 100%);
+        }
+
+        @keyframes pulse-listen {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 30px rgba(244, 63, 94, 0.5);
+            }
+
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 60px rgba(244, 63, 94, 0.9);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 30px rgba(244, 63, 94, 0.5);
+            }
+        }
+
+        @keyframes pulse-speak {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 40px rgba(16, 185, 129, 0.6);
+            }
+
+            100% {
+                transform: scale(1.15);
+                box-shadow: 0 0 80px rgba(16, 185, 129, 1);
+            }
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .transcription-box {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid #334;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 30px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .text-user {
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+
+        .text-ai {
+            color: #e2e8f0;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        /* Forms Layout */
+        .panel {
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid #334;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+        }
+
+        input[type="text"],
+        textarea,
+        input[type="file"] {
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        button.btn {
+            background: #3b82f6;
+            color: white;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        button.btn:hover {
+            background: #2563eb;
+        }
+
+        .notification {
+            font-size: 0.85rem;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .success {
+            color: #10b981;
+        }
+
+        .error {
+            color: #f43f5e;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-8">
+
+    <div class="text-center mb-8 w-full mt-4">
+        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
+            Busco Fácil AI</h1>
+        <p class="text-slate-400 mt-2">Agente de Voz Inteligente para Inmobiliaria</p>
+    </div>
+
+    <!-- Main Audio Interface -->
+    <div id="app-container" class="max-w-2xl mx-auto flex flex-col gap-8">
+        
+        <!-- Left Column: Voice Interface -->
+        <div class="flex flex-col items-center justify-center panel min-h-[500px]">
+
+            <h2 class="text-xl font-semibold mb-2">Conexión de Voz</h2>
+            <p class="text-slate-400 mb-4" id="status-text">Toca la esfera para conectar</p>
+
+
+            <div class="orb-container mb-8" id="orb-btn">
+                <div class="orb" id="orb">
+                    <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-white" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="transcription-box hidden" id="t-box">
+                <div id="transcript-content"></div>
+            </div>
+        </div>
+
+        <!-- Removed Right Column for pure audio experience -->
+    </div>
+
+    <script>
+        const appContainer = document.getElementById('app-container');
+        const orbBtn = document.getElementById('orb-btn');
+        const orb = document.getElementById('orb');
+        const statusText = document.getElementById('status-text');
+        const tBox = document.getElementById('t-box');
+        const tContent = document.getElementById('transcript-content');
+
+        // Project ID fijado para la interfaz pública
+        const currentProject = 'buscofacil';
+
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const RENDER_API = 'https://moshwasi-audio-api.onrender.com';
+        const RENDER_WS = 'wss://moshwasi-audio-api.onrender.com';
+        const API_BASE = isLocal ? 'http://localhost:8000' : RENDER_API;
+        const WS_BASE = isLocal ? 'ws://localhost:8000' : RENDER_WS;
+
+        let ws;
+        let mediaRecorder;
+        let isConnected = false;
+        let audioChunks = [];
+        let stream;
+        let audioContext;
+        let currentAudio = null; // Para manejar la interrupción del audio
+        let activeAudioNodes = []; // Almacena fragmentos del WebAudio emitidos por IA
+        let pendingAudioDecodes = 0; // Previene que la UI parpadee por "status: listening" si hay blobs decodificando
+        let nextPlayTime = 0; // Temporizador global para encadenar fragmentos
+
+        function setOrbState(state) {
+            orb.className = 'orb'; // reset
+            if (state === 'listening') {
+                orb.classList.add('listening');
+                statusText.innerText = "Te escucho...";
+            } else if (state === 'thinking') {
+                orb.classList.add('thinking');
+                statusText.innerText = "Razonando...";
+            } else if (state === 'speaking') {
+                orb.classList.add('speaking');
+                statusText.innerText = "MoshWasi Hablando...";
+            } else if (state === 'waiting') {
+                statusText.innerText = "Procesando...";
+            } else {
+                statusText.innerText = "Conectado. Empieza a hablar.";
+            }
+        }
+
+        async function initAudio() {
+            try {
+                // Habilitamos Echo Cancellation para evitar que se escuche a sí misma
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (audioChunks.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        ws.send(audioBlob);
+                        console.log("Audio enviado para procesar.");
+                    }
+                    audioChunks = []; // Clean up
+                };
+
+                // Detector de Voz Nativo (Web Audio API) ya instanciado en el onClick principal
+                const mediaStreamSource = audioContext.createMediaStreamSource(stream);
+                const analyser = audioContext.createAnalyser();
+                analyser.minDecibels = -60; // Sensibilidad del micrófono
+                mediaStreamSource.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                let silenceTimer = null;
+                let isSpeaking = false;
+                let sustainedLoudFrames = 0; // Para ignorar ruidos cortos
+
+                function detectSilence() {
+                    analyser.getByteFrequencyData(dataArray);
+
+                    let maxVolume = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        if (dataArray[i] > maxVolume) {
+                            maxVolume = dataArray[i];
+                        }
+                    }
+
+                    // Prevenir el Echo Loop dinámicamente, permitiendo "Barge-in" (Interrupción) si el usuario habla muy fuerte.
+                    const isAiSpeaking = activeAudioNodes && activeAudioNodes.length > 0;
+
+                    // Umbral normal (48), o Umbral de interrupción (100) si la IA está sonando.
+                    const threshold = isAiSpeaking ? 100 : 48;
+                    const requiredFrames = isAiSpeaking ? 30 : 12;
+
+                    if (maxVolume > threshold) {
+                        sustainedLoudFrames++;
+                        // Requiere ~350ms de ruido continuo (unos 20 frames a 60fps) para considerarlo habla.
+                        if (!isSpeaking && sustainedLoudFrames > requiredFrames) {
+                            console.log('🗣️ Hablando detectado (Sostenido, Vol: ' + maxVolume + ')');
+                            isSpeaking = true;
+
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                setOrbState('listening');
+
+                                // Si la IA estaba reproduciendo fragmentos PCM, los detenemos aquí inmediatamente en el Front
+                                if (activeAudioNodes && activeAudioNodes.length > 0) {
+                                    console.log("🛑 Deteniendo audio Front end por Barge-in (Habla de usuario)");
+                                    activeAudioNodes.forEach(node => {
+                                        try { node.stop(); node.disconnect(); } catch (e) { }
+                                    });
+                                    activeAudioNodes = [];
+                                    nextPlayTime = 0;
+                                }
+
+                                // Notificar a OpenAI / Backend de la interrupción temprana
+                                ws.send(JSON.stringify({ type: "interruption" }));
+
+                                if (mediaRecorder && mediaRecorder.state === 'inactive') {
+                                    mediaRecorder.start();
+                                }
+                            }
+                        }
+                        if (silenceTimer) {
+                            clearTimeout(silenceTimer);
+                            silenceTimer = null;
+                        }
+                    } else {
+                        // Resetea el contador si el ruido fue un pico corto o ruido estático
+                        if (sustainedLoudFrames > 0 && !isSpeaking) {
+                            sustainedLoudFrames--;
+                        }
+
+                        // Si está silenciado por 1.2 segundos (1200ms)
+                        if (isSpeaking && !silenceTimer) {
+                            silenceTimer = setTimeout(() => {
+                                console.log('🔇 Silencio detectado, enviando a procesar');
+                                isSpeaking = false;
+                                sustainedLoudFrames = 0;
+                                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                                    setOrbState('thinking');
+                                    mediaRecorder.stop();
+                                }
+                            }, 1200);
+                        }
+                    }
+
+                    if (isConnected && stream) {
+                        requestAnimationFrame(detectSilence);
+                    }
+                }
+
+                detectSilence(); // Iniciar monitor de audio continuo
+
+            } catch (err) {
+                console.error("Mic error:", err);
+                alert("Permite acceso al micrófono.");
+            }
+        }
+
+        orbBtn.onclick = async () => {
+            if (isConnected) {
+                // Desconectar
+                if (ws) ws.close();
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+                if (currentAudio) currentAudio.pause();
+                if (audioContext) audioContext.close();
+                if (stream) stream.getTracks().forEach(t => t.stop());
+                isConnected = false;
+                orb.className = 'orb';
+                statusText.innerText = "Desconectado. Toca para conectar.";
+                return;
+            }
+
+            // ws = new WebSocket('ws://localhost:8765/voice/stream');
+
+            // Requisito estricto de navegadores modernos: El AudioContext DEBE inicializarse o reanudarse
+            // como respuesta directa y síncrona a la interacción del usuario (el click).
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            const baseAudioUrl = `${WS_BASE}/voice/stream?project_id=${currentProject}`;
+
+            try {
+                ws = new WebSocket(baseAudioUrl);
+            } catch (err) {
+                console.error("Error conectando al WebSocket global:", err);
+                setOrbState('connected');
+                return;
+            }
+
+            ws.onopen = async () => {
+                isConnected = true;
+                tBox.classList.remove('hidden');
+                setOrbState('connected');
+
+                // Pedimos permisos y activamos el detector de voz
+                if (!stream) await initAudio();
+            };
+
+            ws.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    setOrbState('speaking');
+
+                    try {
+                        const arrayBuffer = await event.data.arrayBuffer();
+                        const int16Array = new Int16Array(arrayBuffer);
+                        
+                        // Convertir PCM 16-bit 24kHz a Float32 para la Web Audio API
+                        const audioBuffer = audioContext.createBuffer(1, int16Array.length, 24000);
+                        const channelData = audioBuffer.getChannelData(0);
+                        for (let i = 0; i < int16Array.length; i++) {
+                            channelData[i] = int16Array[i] / 32768.0;
+                        }
+
+                        // Reproducir usando programación de tiempo para que los fragmentos no se asolapen
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+
+                        // Si el tiempo proyectado se quedó atrás (porque hubo silencio o es un nuevo mensaje), reseteamos al tiempo actual + margen
+                        if (nextPlayTime < audioContext.currentTime) {
+                            nextPlayTime = audioContext.currentTime + 0.05; // 50ms delay
+                        }
+
+                        source.start(nextPlayTime);
+                        nextPlayTime += audioBuffer.duration;
+
+                        activeAudioNodes.push(source);
+
+                        source.onended = () => {
+                            const index = activeAudioNodes.indexOf(source);
+                            if (index > -1) activeAudioNodes.splice(index, 1);
+
+                            if (activeAudioNodes.length === 0) {
+                                setOrbState('connected');
+                            }
+                        };
+                    } catch (e) {
+                        console.error("Error reproduciendo PCM stream: ", e);
+                    }
+                } else {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.status === "end_call") {
+                            console.log("🛑 IA solicitó finalizar la llamada.");
+                            showNotification('status-text', 'Llamada finalizada por el asistente.');
+                            if (isConnected && orbBtn) {
+                                orbBtn.click();
+                            }
+                            return;
+                        }
+
+                        if (data.status === "reasoning") {
+                            setOrbState('thinking');
+
+                            // INTERRUPCIÓN REAL: Detenemos a la IA vaciando todos los nodos programados
+                            if (activeAudioNodes.length > 0) {
+                                console.log("🛑 IA Interrumpida por palabras del usuario");
+                                activeAudioNodes.forEach(node => {
+                                    try { node.stop(); node.disconnect(); } catch (e) { }
+                                });
+                                activeAudioNodes = [];
+                                nextPlayTime = 0; // Reiniciamos el temporizador
+                            }
+                        }
+
+                        if (data.status === "reasoning" && !isWaitingForUserText) {
+                             isWaitingForUserText = true;
+                        }
+
+                        if (data.transcription) {
+                            tContent.innerHTML += `<div class="text-user">Usuario: ${data.transcription}</div>`;
+                            tBox.scrollTop = tBox.scrollHeight;
+                            
+                            // Flush the buffered AI text
+                            isWaitingForUserText = false;
+                            if (aiBuffer.length > 0) {
+                                let lastMsg = document.createElement('div');
+                                lastMsg.className = 'text-ai';
+                                lastMsg.innerHTML = 'IA: ' + aiBuffer;
+                                tContent.appendChild(lastMsg);
+                                aiBuffer = "";
+                                tBox.scrollTop = tBox.scrollHeight;
+                            }
+                        }
+                        
+                        if (data.status === "listening_delta" && data.delta) {
+                            if (isWaitingForUserText) {
+                                aiBuffer += data.delta;
+                            } else {
+                                let lastMsg = tContent.lastElementChild;
+                                if (!lastMsg || !lastMsg.classList.contains('text-ai') || lastMsg.getAttribute('data-finished') === 'true') {
+                                    lastMsg = document.createElement('div');
+                                    lastMsg.className = 'text-ai';
+                                    lastMsg.innerHTML = 'IA: ';
+                                    tContent.appendChild(lastMsg);
+                                }
+                                lastMsg.innerHTML += data.delta;
+                                tBox.scrollTop = tBox.scrollHeight;
+                            }
+                        }
+                        
+                        if (data.response) {
+                            if (isWaitingForUserText) {
+                                aiBuffer = data.response; // In case delta was missed
+                            } else {
+                                let lastMsg = tContent.lastElementChild;
+                                if (lastMsg && lastMsg.classList.contains('text-ai') && !lastMsg.getAttribute('data-finished')) {
+                                    lastMsg.setAttribute('data-finished', 'true');
+                                } else {
+                                    tContent.innerHTML += `<div class="text-ai" data-finished="true">IA: ${data.response}</div>`;
+                                }
+                                tBox.scrollTop = tBox.scrollHeight;
+                            }
+                        }
+
+                        if (data.status === "listening") {
+                            // Si el servidor terminó de hablar o falló el TTS, devuelve a estado de escucha
+                            if (activeAudioNodes.length === 0 && pendingAudioDecodes === 0) {
+                                setOrbState('connected');
+                            }
+                        }
+                    } catch (e) { }
+                }
+            };
+
+            ws.onclose = () => {
+                isConnected = false;
+                orb.className = 'orb';
+                statusText.innerText = "Desconectado.";
+                // NO cerraremos el stream ni el audioContext aquí para no romper la UI en micro-desconexiones.
+                // Se cerrarán adecuadamente si el usuario hace click manual en el botón.
+            }
+        };
+
+        // UI INGESTION LOGIC
+        function showNotification(id, message, isError = false) {
+            const el = document.getElementById(id);
+            el.innerText = message;
+            el.className = 'notification ' + (isError ? 'error' : 'success');
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        // Initialize UI state
+        window.onload = () => {
+            // Ya no hay autenticación requerida en esta vista
+            console.log("Interfaz MoshWasi cargada.");
+        };
+
+    </script>
+</body>
+
+</html>

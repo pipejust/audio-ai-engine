@@ -1,6 +1,6 @@
 class SentenceAccumulator:
-    FIRST_EMIT_TOKENS  = 8    # tokens para primer chunk (arranque rápido)
-    MIN_EMIT_TOKENS    = 3    # mínimo absoluto para emitir
+    FIRST_EMIT_TOKENS  = 2    # tokens para primer chunk (arranque rápido)
+    MIN_EMIT_TOKENS    = 1    # mínimo absoluto para emitir
     FORCE_EMIT_TOKENS  = 25   # máximo sin puntuación antes de forzar
     PUNCTUATION_END    = {'.', '?', '!', '…'}
     PUNCTUATION_PAUSE  = {',', ';'}
@@ -13,20 +13,18 @@ class SentenceAccumulator:
     async def push(self, token: str):
         self.buffer.append(token)
         text = ''.join(self.buffer).strip()
-        n = len(self.buffer)
+        n = len(text.split())
  
         should_emit = False
  
-        # Arranque rápido — primera oración
-        if not self.first_emitted and n >= self.FIRST_EMIT_TOKENS:
-            last = text[-1] if text else ''
-            if last in self.PUNCTUATION_END:
-                should_emit = True
- 
-        # Puntuación de fin de oración
-        elif text and text[-1] in self.PUNCTUATION_END and n >= self.MIN_EMIT_TOKENS:
+        # Puntuación de fin de oración (Emite siempre que haya un punto, incluso si son 1-2 palabras)
+        if text and text[-1] in self.PUNCTUATION_END:
             should_emit = True
  
+        # Arranque táctico (si no hay punto pero ya hay suficientes palabras para empezar a hablar)
+        elif not self.first_emitted and n >= self.FIRST_EMIT_TOKENS:
+            should_emit = True
+            
         # Puntuación de pausa (coma, punto y coma)
         elif text and text[-1] in self.PUNCTUATION_PAUSE and n >= 12:
             should_emit = True

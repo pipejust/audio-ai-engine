@@ -156,29 +156,15 @@ DESCRIPCIÓN: {observations}
 ENLACE PARA EL CLIENTE: {url}
 ---
 """
-        # Tipo de inmueble (Extraído del link para mayor precisión, fallback al título)
-        prop_type = ""
-        actual_link = prop.get("link", "").lower()
-        if actual_link:
-            parts = actual_link.split("/")
-            if len(parts) >= 2:
-                slug = parts[-2]
-                prop_type = slug.split("-")[0]
-                
+        prop_type = prop.get("property_type_label", "").lower()
         if not prop_type:
+            # Fallback seguro solo si WASI no retorna label (muy raro)
             title_lower = title.lower()
-            if "casa" in title_lower:
-                prop_type = "casa"
-            elif "apartamento" in title_lower or "apto" in title_lower:
-                prop_type = "apartamento"
-            elif "lote" in title_lower:
-                prop_type = "lote"
-            elif "local" in title_lower:
-                prop_type = "local"
-            elif "finca" in title_lower:
-                prop_type = "finca"
-            else:
-                prop_type = prop.get("property_type_label", "").lower()
+            if "apartamento" in title_lower or "apto" in title_lower: prop_type = "apartamento"
+            elif "casa" in title_lower: prop_type = "casa"
+            elif "lote" in title_lower: prop_type = "lote"
+            elif "finca" in title_lower: prop_type = "finca"
+            elif "local" in title_lower: prop_type = "local"
 
         return {
             "text": formatted_text.strip(),

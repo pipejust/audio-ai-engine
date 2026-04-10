@@ -50,6 +50,7 @@ class VoiceSession:
         self.agent_manager = agent_manager
         self.tts_engine = tts_engine
         self.current_voice_id = "" # Sera inyectado por el gateway
+        self.did_emit_text = False
         self.tts_queue = asyncio.Queue()
         self.tts_worker_task = asyncio.create_task(self._tts_worker())
  
@@ -125,6 +126,7 @@ class VoiceSession:
  
     async def respond(self, user_text: str):
         self.interrupted = False
+        self.did_emit_text = False
         self.state = VoiceState.THINKING
  
         # Añadir al contexto
@@ -135,7 +137,7 @@ class VoiceSession:
 
         try:
             self.llm_task = asyncio.create_task(
-                self._stream_llm(accumulator, assistant_text, user_text)
+                self._stream_llm(accumulator, collector=assistant_text, last_user_text=user_text)
             )
             await self.llm_task
             # Respuesta completa — guardar contexto
@@ -171,4 +173,10 @@ class VoiceSession:
         await self.tts_queue.put("[TURN_DONE]")
 
     async def tts_chunk(self, text: str):
+        if not self.did_emit_text:
+            try:
+                await self.ws.send_json({"type": "response.created"})
+            except:
+                pass
+            self.did_emit_text = True
         await self.tts_queue.put(text)

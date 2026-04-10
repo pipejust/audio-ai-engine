@@ -38,7 +38,7 @@ class STTEngine:
             hallucinations = [
                 "gracias", "subtítulos", "amén", "gracias por ver", "suscríbete", 
                 "thank you", "thanks", "subtitles", "you", "oh", "ah",
-                "hasta la próxima", "hasta la proxima", "nos vemos"
+                "hasta la próxima", "hasta la proxima", "nos vemos", "muchas gracias"
             ]
             
             if clean_text in hallucinations:

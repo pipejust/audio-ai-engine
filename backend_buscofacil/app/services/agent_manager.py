@@ -341,18 +341,17 @@ class AgentManager:
                         # Hilo en background para no bloquear
                         tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
                         
-                        done, pending = await asyncio.wait([tool_task], timeout=1.0)
-                        
-                        if not done:
-                            import random
-                            muletillas = [
-                                "Veamos.", "Dame un segundo.", "Permíteme revisar.", 
-                                "A ver.", "Un instante.", "Déjame chequear."
-                            ]
+                        muletillas = ["A ver...", "Mmm...", "Veamos...", "Dame un segundito...", "Déjame mirar..."]
+                        import random
+                        if func_name == "search_properties":
                             yield random.choice(muletillas) + " "
-                            data = await tool_task # Esperar pacientemente el resto del tiempo
-                        else:
-                            data = tool_task.result()
+                        
+                        while not tool_task.done():
+                            done, pending = await asyncio.wait([tool_task], timeout=1.5)
+                            if not done:
+                                yield random.choice(muletillas) + " "
+                                
+                        data = tool_task.result()
                             
                         result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
                         
@@ -363,18 +362,18 @@ class AgentManager:
                                     for prop in data["raw_properties"]:
                                         prop["ui_currency"] = currency
                                         prop["currency"] = currency
-                                    await websocket.send_json({"status": "search_results", "listings": data["raw_properties"]})
+                                    await websocket.send_json({"status": "search_results", "type": "search_results", "listings": data["raw_properties"]})
                                 except Exception: pass
                             if "action" in data:
                                 try:
-                                    payload = {"status": "action", "action": data["action"]}
+                                    payload = {"status": "action", "type": "action", "action": data["action"]}
                                     if "listing_id" in data: payload["listing_id"] = data["listing_id"]
                                     if "listing_ids" in data: payload["listing_ids"] = data["listing_ids"]
                                     await websocket.send_json(payload)
                                 except Exception: pass
                             if "appointments" in data:
                                 try:
-                                    await websocket.send_json({"status": "appointments_created", "appointments": data["appointments"]})
+                                    await websocket.send_json({"status": "appointments_created", "type": "appointments_created", "appointments": data["appointments"]})
                                 except Exception: pass
                                 
                     except Exception as e:

@@ -103,6 +103,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         raw_docs = retriever.invoke(search_query)
         
         filtered_docs = []
+        fallback_docs = []
         seen_ids = set()
         
         def normalize_str(s):
@@ -134,16 +135,27 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                             break
                     if not valid_location:
                         continue
+                type_matched = True
                 if type_norm:
                     if meta_type:
                         if type_norm not in meta_type:
-                            continue
+                            type_matched = False
                     else:
                         if type_norm not in page_norm:
-                            continue
-                filtered_docs.append(d)
+                            type_matched = False
+                
+                if type_matched:
+                    filtered_docs.append(d)
+                else:
+                    fallback_docs.append(d)
+                    
                 if len(filtered_docs) >= 100:
                     break
+                    
+        is_fallback = False
+        if not filtered_docs and fallback_docs:
+            filtered_docs = fallback_docs[:100]
+            is_fallback = True
         
         raw_properties = []
         import re
@@ -335,6 +347,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 rp["agent_id_user"] = live_info["agent_id_user"]
                 rp["agent_first"] = live_info["agent_first"]
                 rp["agent_last"] = live_info["agent_last"]
+                rp["ui_currency"] = req_currency
                 
                 valid_live_properties.append(rp)
                 
@@ -360,9 +373,12 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                             
                     currency_str = f" [PRECIO MÁXIMO EN {req_currency}: {current_price}]" if req_currency != 'COP' else ""
                     result_text += f"\\n[{i+1}] (ID_INMUEBLE: {prop_id}){agent_str}{currency_str} {snippet}\\n"
+                
                 result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE de cada opción por si el usuario pide seleccionar, agendar o ver detalles."
+                if is_fallback:
+                    result_text += f"\\n\\n**¡CRÍTICO! ALERTA DE FALLBACK:** Como asistente, NO CUMPLES con el tipo exacto de '{tipo}' que el usuario pidió (Te lo informamos porque estas propiedades mostradas son aproxmaciones de tipo distinto). ESTÁS OBLIGADO A HACER ESTO A CONTINUACIÓN: Diles de frente 'No contamos  actualmente con {tipo} exacto en {location}, pero no te preocupes, tengo estas excelentes opciones similares...'. Luego descríbelas empáticamente."
         else:
-            result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} disponible en el sector de {location}. Infórmale esto de inmediato."
+            result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} o similares disponibles en el sector de {location}. Infórmale esto de inmediato."
             
         return {"status": "success", "result_text": result_text, "raw_properties": raw_properties}
     elif function_name == "open_property_details":

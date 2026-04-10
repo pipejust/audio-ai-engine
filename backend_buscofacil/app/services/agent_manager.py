@@ -353,7 +353,7 @@ class AgentManager:
                             yield random.choice(muletillas) + " "
                         
                         while not tool_task.done():
-                            done, pending = await asyncio.wait([tool_task], timeout=4.0)
+                            done, pending = await asyncio.wait([tool_task], timeout=2.0)
                             if not done:
                                 yield random.choice(muletillas) + " "
                                 

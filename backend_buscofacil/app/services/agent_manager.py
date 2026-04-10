@@ -293,8 +293,8 @@ class AgentManager:
                 # Recuperación anti-alucinaciones Llama 3.3 de Groq (400 Bad Request / failed_generation)
                 if "failed_generation" in error_msg and "<function=" in error_msg:
                     print(f"⚠️ Detectado erro de validación Groq. Autorecuperando tool call... Error: {error_msg}")
-                    # regex tolerante a la ausencia del > de cierre antes de </function>
-                    match = re.search(r"<function=([a-zA-Z0-9_]+)\s*(\{.*?\})>?</function>", error_msg)
+                    # regex tolerante a la ausencia del > de cierre o la inclusión de signos igual = extra
+                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", error_msg)
                     if match:
                         func_name = match.group(1)
                         func_args_str = match.group(2)
@@ -362,21 +362,22 @@ class AgentManager:
                         tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
                         
                         if func_name == "search_properties":
+                            import random
                             muletillas = [
                                 "Permítame verificar en nuestro sistema...",
                                 "Denos un instante mientras busco esto...",
                                 "Estoy cruzando la información con la base de datos...",
                                 "Un momento por favor, estoy revisando las opciones..."
                             ]
-                            import random
-                            yield random.choice(muletillas) + " "
+                            random.shuffle(muletillas)
+                            yield muletillas.pop() + " "
                             
                             muletillas_count = 0
                             while not tool_task.done() and muletillas_count < 2:
                                 done, pending = await asyncio.wait([tool_task], timeout=4.5) # Esto asegura más de 2 segundos de silencio real en TTS
                                 if not done:
                                     muletillas_count += 1
-                                    yield random.choice(muletillas) + " "
+                                    yield muletillas.pop() + " "
                         
                         await tool_task
                         yield "[CLEAR_MULETILLAS] "

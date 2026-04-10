@@ -54,8 +54,12 @@ class AgentManager:
             else:
                 system_prompt.content += "\n\nREGLA DE CONTACTO: Eres un invitado anónimo. Antes de emitir el JSON final de 'appointments', SIEMPRE pregunta amablemente al cliente: '¿A qué nombre y número de celular dejo registrada la visita?'. Una vez que el usuario los proporcione, debes emitir esos datos exactos e inyectarlos localmente en el arreglo JSON de la respuesta usando las llaves 'client_name' y 'client_phone'. Si el usuario se niega a darlos o dice 'usa mi perfil', envía ''."
 
-            if currency and currency != "COP":
-                system_prompt.content += f"\n\nREGLA DE DIVISAS Y DINERO (IMPERATIVO): El usuario ha seleccionado la moneda {currency}. A partir de ahora, TODOS los precios que le digas o escribas DEBEN ser expresados verbalmente en la moneda {currency} (ej. 'Dólares' si es USD, o 'Euros' si es EUR). NUNCA menciones Pesos Colombianos ni COP. Los números en los datos de las herramientas ya vienen convertidos matemáticamente a {currency}, solo encárgate de pronunciarlos con el nombre de esta moneda."
+            if currency:
+                moneda_nombre = "Pesos Colombianos"
+                if currency == "USD": moneda_nombre = "Dólares"
+                elif currency == "EUR": moneda_nombre = "Euros"
+                
+                system_prompt.content += f"\n\nREGLA DE DIVISAS Y DINERO (IMPERATIVO): El usuario está operando en la moneda {currency} ({moneda_nombre}). SIEMPRE que menciones un precio, debes aclarar explícitamente la moneda (ej. '1500 millones de Pesos' o '200 mil Dólares'). Los números en las herramientas ya están en {currency}."
 
             if context_listing_ids:
                 # Inyección instantánea (Cero latencia) del orden visual exacto
@@ -288,6 +292,17 @@ class AgentManager:
                     func_name = c["name"]
                     args = json.loads(c["args"])
                     
+                    # ---- MULETILLAS ACÚSTICAS ----
+                    if func_name == "search_properties":
+                        yield "Un momento, estoy revisando el inventario... "
+                    elif func_name == "schedule_visits":
+                        yield "Claro, dame un segundo para revisar la agenda... "
+                    elif func_name == "open_property_details":
+                        yield "Vale, abriendo los detalles... "
+                    elif func_name == "check_location_context":
+                        yield "Un segundo, verificando la ubicación... "
+                    # ------------------------------
+
                     if func_name == "schedule_visits":
                         if isinstance(args, dict):
                             args["client_name"] = client_name

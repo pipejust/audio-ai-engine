@@ -51,11 +51,9 @@ class VoiceSession:
         self.tts_engine = tts_engine
         self.current_voice_id = "alloy"
  
-    # ── Manejo de interrupción desde VAD ──────────────────────────
     async def handle_interruption(self):
-        if self.state == VoiceState.LISTENING:
-            return  # ya estamos escuchando, nada que hacer
- 
+        self.interrupted = True  # In-memory flag para abortar TTS
+
         # 1. Cancelar LLM si sigue generando
         if self.llm_task and not self.llm_task.done():
             self.llm_task.cancel()
@@ -82,6 +80,7 @@ class VoiceSession:
         self.state = VoiceState.LISTENING
  
     async def respond(self, user_text: str):
+        self.interrupted = False
         self.state = VoiceState.THINKING
  
         # Añadir al contexto
@@ -131,7 +130,7 @@ class VoiceSession:
             return
         
         self.tts_task = asyncio.create_task(
-            self.tts_engine.synthesize_and_stream(text, self.ws, self.id, self.redis, self.current_voice_id)
+            self.tts_engine.synthesize_and_stream(text, self, self.current_voice_id)
         )
         try:
             await self.tts_task

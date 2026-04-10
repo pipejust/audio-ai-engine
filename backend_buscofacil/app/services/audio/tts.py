@@ -54,13 +54,17 @@ class TTSEngine:
             print(f"❌ Error en TTS ElevenLabs: {e}")
             return None
 
-    async def synthesize_and_stream(self, text: str, ws, session_id: str, redis, voice_name: str = "alloy"):
+    async def synthesize_and_stream(self, text: str, voice_session, voice_name: str = "alloy"):
         """TTS Streaming por chunks con soporte de Barge-In. (Sustituto Async de Kokoro según especificaciones)."""
         import aiohttp
         import asyncio
         if not text or not self.api_key:
             return
             
+        ws = voice_session.ws
+        session_id = voice_session.id
+        redis = voice_session.redis
+
         voice_map = {
             "echo": os.getenv("ELEVENLABS_VOICE_MALE", "GpnOed0ndzjm6Pc8JALF"),
             "alloy": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
@@ -110,7 +114,7 @@ class TTSEngine:
                     full_pcm = bytearray()
                     async for chunk in resp.content.iter_chunked(4096):
                         # Si hay un Barge-in mientras decodifica, abortamos rápido.
-                        if redis and await redis.exists(f'voice:interrupt:{session_id}'):
+                        if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
                             print("🛑 TTS abortado por interrupción del usuario (Descarga).")
                             return
                         if chunk:
@@ -119,6 +123,12 @@ class TTSEngine:
                     if not full_pcm:
                         return
                         
+                    # Mapeo vital para Frontend y abortos nativos
+                    # Si al terminar de bajar el audio ya hubo interrupción ENTONCES NUNCA LO ENVÍES
+                    if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
+                        print("🛑 TTS abortado justo antes de emitir audio al websocket.")
+                        return
+
                     # Pre-empacar TODO el audio como un solo archivo WAV estático para React Native (Fluidez cristalina, cero lluvia/stutter)
                     wav_full = create_wav_header(len(full_pcm)) + full_pcm
                     b64_full = base64.b64encode(wav_full).decode("utf-8")
@@ -137,8 +147,12 @@ class TTSEngine:
                     chars_per_tick = max(1, int(len(chars) / num_ticks))
                     
                     for _ in range(num_ticks):
-                        if redis and await redis.exists(f'voice:interrupt:{session_id}'):
+                        if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
                             print("🛑 Tipeo abortado por Barge-In.")
+                            # Intentar detener React Native usando el comando oficial de OpenAI (en caso el front lo soporte)
+                            try:
+                                await ws.send_json({"type": "response.cancel"})
+                            except: pass
                             break
                         if chars_sent < len(chars):
                             delta_text = chars[chars_sent : chars_sent + chars_per_tick]

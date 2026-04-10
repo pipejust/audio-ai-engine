@@ -320,16 +320,7 @@ class AgentManager:
                                     if chunk.content: yield chunk.content
                                 return # Terminate current tool attempt
 
-                    # ---- MULETILLAS ACÚSTICAS ----
-                    if func_name == "search_properties":
-                        yield "Un momento, estoy revisando el inventario... "
-                    elif func_name == "schedule_visits":
-                        yield "Claro, dame un segundo para revisar la agenda... "
-                    elif func_name == "open_property_details":
-                        yield "Vale, abriendo los detalles... "
-                    elif func_name == "check_location_context":
-                        yield "Un segundo, verificando la ubicación... "
-                    # ------------------------------
+                    # Se eliminaron las muletillas acústicas por petición del usuario
 
                     if func_name == "schedule_visits":
                         if isinstance(args, dict):
@@ -353,6 +344,9 @@ class AgentManager:
                         if websocket and isinstance(data, dict):
                             if "raw_properties" in data:
                                 try:
+                                    # Inyectar moneda en cada inmueble para que Frontend pueda pintarlo en UI
+                                    for prop in data["raw_properties"]:
+                                        prop["ui_currency"] = currency
                                     await websocket.send_json({"status": "search_results", "listings": data["raw_properties"]})
                                 except Exception: pass
                             if "action" in data:

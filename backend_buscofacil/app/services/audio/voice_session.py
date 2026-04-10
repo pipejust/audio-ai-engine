@@ -95,16 +95,16 @@ class VoiceSession:
                 self._stream_llm(accumulator, assistant_text, user_text)
             )
             await self.llm_task
+            # Respuesta completa — guardar contexto
+            self.context.add_turn('assistant', ''.join(assistant_text))
         except asyncio.CancelledError:
             # Barge-in ocurrió — guardar lo generado hasta ahora
             partial = ''.join(assistant_text)
             if partial.strip():
                 self.context.add_turn('assistant', partial, interrupted=True)
-            return
- 
-        # Respuesta completa — guardar contexto
-        self.context.add_turn('assistant', ''.join(assistant_text))
-        self.state = VoiceState.LISTENING
+            raise
+        finally:
+            self.state = VoiceState.LISTENING
  
     async def _stream_llm(self, accumulator, collector, last_user_text: str):
         # Delegate real query processing and tool calling to AgentManager but streamed
@@ -133,7 +133,10 @@ class VoiceSession:
  
     async def tts_chunk(self, text: str):
         self.state = VoiceState.SPEAKING
-        if not text.strip(): return
+        if not text.strip(): 
+            self.state = VoiceState.LISTENING
+            return
+        
         self.tts_task = asyncio.create_task(
             self.tts_engine.synthesize_and_stream(text, self.ws, self.id, self.redis, self.current_voice_id)
         )
@@ -141,3 +144,5 @@ class VoiceSession:
             await self.tts_task
         except asyncio.CancelledError:
             raise
+        finally:
+            self.state = VoiceState.LISTENING

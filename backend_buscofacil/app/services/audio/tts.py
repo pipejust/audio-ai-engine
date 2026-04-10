@@ -68,9 +68,9 @@ class TTSEngine:
         }
         target_voice_id = voice_map.get(voice_name, self.voice_id)
         
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice_id}/stream?output_format=mp3_44100_128"
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice_id}/stream?output_format=pcm_24000"
         headers = {
-            "Accept": "audio/mpeg",
+            "Accept": "audio/pcm",
             "Content-Type": "application/json",
             "xi-api-key": self.api_key
         }
@@ -81,6 +81,7 @@ class TTSEngine:
         }
         
         try:
+            import base64
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, headers=headers) as resp:
                     resp.raise_for_status()
@@ -90,11 +91,18 @@ class TTSEngine:
                             print("🛑 TTS abortado por interrupción del usuario.")
                             break
                         if chunk:
-                            await ws.send_bytes(chunk)
-                            await asyncio.sleep(0.01) # Pequeño sleep para evitar saturar el WebSocket
+                            # Empaquetamos PCM plano en B64 para emular OpenAI Realtime WS exacto
+                            b64_chunk = base64.b64encode(chunk).decode("utf-8")
+                            await ws.send_json({"type": "response.audio.delta", "delta": b64_chunk})
+                            
+                            # Mantener sincronizado el Backend con la reproducción de audio (Half-Duplex sync)
+                            # 24kHz, mono, 16bit = 48000 bytes por segundo
+                            chunk_seconds = len(chunk) / 48000.0
+                            # Dormimos ligeramente menos que el tiempo real para mantener el streaming fluyendo sin pausas
+                            await asyncio.sleep(chunk_seconds * 0.8)
         except asyncio.CancelledError:
             # Barge-in canceló la tarea — silenciar cliente
-            await ws.send_json({'type': 'tts_stop'})
+            await ws.send_json({'type': 'response.cancel'})
             raise
         except Exception as e:
             print(f"❌ Error en TTS Streaming HTTP: {e}")

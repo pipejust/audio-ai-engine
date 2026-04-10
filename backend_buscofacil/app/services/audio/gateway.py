@@ -96,6 +96,9 @@ class VoiceGatewayManager:
         voice_session.client_phone = client_phone
         voice_session.currency = currency
 
+        # Emular evento inicial de OpenAI Realtime para que el Frontend despierte su UI
+        await self._send_json(voice_session.ws, {"type": "session.created"})
+
         # Saludo Proactivo Inmediato (Ultra-Rápido sin pasar por OpenAI)
         try:
             nombre = client_name.split(' ')[0] if client_name and '@' not in client_name else ''
@@ -104,16 +107,13 @@ class VoiceGatewayManager:
             # 1. Anexar al contexto limpio sin gastar tokens
             voice_session.context.add_turn('assistant', greeting_text)
             
-            # 2. Dibujar burbujas en el Frontend de inmediato
-            await self._send_json(voice_session.ws, {
-                "type": "conversation.item.create",
-                "item": {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": greeting_text}]
-                }
-            })
+            # 2. Dibujar burbujas en el Frontend de inmediato usando deltas
             await self._send_json(voice_session.ws, {"type": "response.create"})
+            await self._send_json(voice_session.ws, {
+                "type": "response.audio_transcript.delta",
+                "delta": greeting_text
+            })
+            await self._send_json(voice_session.ws, {"type": "response.audio_transcript.done"})
             
             # 3. Lanzar ElevenLabs directo (saltando LLM Chain)
             self.current_task = asyncio.create_task(voice_session.tts_chunk(greeting_text))

@@ -155,16 +155,10 @@ class VoiceGatewayManager:
                                 if rms < 350:
                                     continue
                                     
-                                # Interrupción inmediata por Barge-In (VAD por volumen RMS > 350)
+                                # Mudo estricto matemático (Half-Duplex) para bloquear eco del parlante
                                 if voice_session.state.value == "speaking":
-                                    print("🛑 Interrupción Barge-in (RMS Alto). Deteniendo TTS...")
-                                    if self.current_task and not self.current_task.done():
-                                        self.current_task.cancel()
-                                    if r:
-                                        # Notificar interrupción por Pub/Sub usando session_id seguro extraído del websocket u objeto
-                                        await r.publish(f"voice:interrupt:{voice_session.id}", "barge_in")
-                                    else:
-                                        await voice_session.handle_interruption()
+                                    # Evitar que la propia voz del asistente dispare una interrupción
+                                    continue
                                     
                                 has_useful_audio = True
                                 audio_buffer.extend(base64.b64decode(audio_b64))

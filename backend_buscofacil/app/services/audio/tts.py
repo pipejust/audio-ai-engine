@@ -86,7 +86,7 @@ class TTSEngine:
                     resp.raise_for_status()
                     async for chunk in resp.content.iter_chunked(4096):
                         # Verificar si hubo barge-in antes de enviar cada chunk
-                        if await redis.exists(f'voice:interrupt:{session_id}'):
+                        if redis and await redis.exists(f'voice:interrupt:{session_id}'):
                             print("🛑 TTS abortado por interrupción del usuario.")
                             break
                         if chunk:

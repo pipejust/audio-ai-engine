@@ -50,7 +50,31 @@ class VoiceSession:
         self.agent_manager = agent_manager
         self.tts_engine = tts_engine
         self.current_voice_id = "alloy"
+        self.tts_queue = asyncio.Queue()
+        self.tts_worker_task = asyncio.create_task(self._tts_worker())
  
+    async def _tts_worker(self):
+        while True:
+            text = await self.tts_queue.get()
+            if text == "[STOP]": break
+            
+            self.state = VoiceState.SPEAKING
+            if not text.strip(): 
+                self.state = VoiceState.LISTENING
+                self.tts_queue.task_done()
+                continue
+                
+            self.tts_task = asyncio.create_task(
+                self.tts_engine.synthesize_and_stream(text, self, self.current_voice_id)
+            )
+            try:
+                await self.tts_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self.state = VoiceState.LISTENING
+                self.tts_queue.task_done()
+
     async def handle_interruption(self):
         self.interrupted = True  # In-memory flag para abortar TTS
 
@@ -61,8 +85,16 @@ class VoiceSession:
                 await self.llm_task
             except asyncio.CancelledError:
                 pass
+                
+        # 1.5 Limpiar la cola de TTS
+        while not self.tts_queue.empty():
+            try:
+                self.tts_queue.get_nowait()
+                self.tts_queue.task_done()
+            except asyncio.QueueEmpty:
+                break
  
-        # 2. Cancelar TTS
+        # 2. Cancelar TTS activa
         if self.tts_task and not self.tts_task.done():
             self.tts_task.cancel()
             try:
@@ -122,19 +154,11 @@ class VoiceSession:
             await accumulator.push(token)
             
         await accumulator.flush()
+        
+        try:
+            await self.ws.send_json({'type': 'response.audio_transcript.done'})
+        except Exception:
+            pass
  
     async def tts_chunk(self, text: str):
-        self.state = VoiceState.SPEAKING
-        if not text.strip(): 
-            self.state = VoiceState.LISTENING
-            return
-        
-        self.tts_task = asyncio.create_task(
-            self.tts_engine.synthesize_and_stream(text, self, self.current_voice_id)
-        )
-        try:
-            await self.tts_task
-        except asyncio.CancelledError:
-            raise
-        finally:
-            self.state = VoiceState.LISTENING
+        await self.tts_queue.put(text)

@@ -179,11 +179,6 @@ class TTSEngine:
             if chars_sent < len(chars):
                 try: await ws.send_json({"type": "response.audio_transcript.delta", "delta": chars[chars_sent:]})
                 except Exception: pass
-
-            try: await ws.send_json({"type": "response.audio_transcript.done"})
-            except Exception: pass
             
         except asyncio.CancelledError:
-            try: await ws.send_json({'type': 'response.audio_transcript.done'})
-            except Exception: pass
             raise

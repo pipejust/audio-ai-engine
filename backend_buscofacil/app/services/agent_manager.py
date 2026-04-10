@@ -346,7 +346,8 @@ class AgentManager:
                     
                     tool_req = ToolRequest(project_id=project_id, args=args, currency=currency)
                     try:
-                        data = execute_tool(func_name, tool_req, MockRequest())
+                        import asyncio
+                        data = await asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest())
                         result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
                         
                         if websocket and isinstance(data, dict):

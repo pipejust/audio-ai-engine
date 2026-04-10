@@ -37,7 +37,8 @@ class STTEngine:
             # Filtro extendido de alucinaciones comunes de Whisper (Español e Inglés)
             hallucinations = [
                 "gracias", "subtítulos", "amén", "gracias por ver", "suscríbete", 
-                "thank you", "thanks", "subtitles", "you", "oh", "ah"
+                "thank you", "thanks", "subtitles", "you", "oh", "ah",
+                "hasta la próxima", "hasta la proxima", "nos vemos"
             ]
             
             if clean_text in hallucinations:

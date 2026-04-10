@@ -341,17 +341,15 @@ class AgentManager:
                         # Hilo en background para no bloquear
                         tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
                         
-                        done, pending = await asyncio.wait([tool_task], timeout=0.8)
+                        done, pending = await asyncio.wait([tool_task], timeout=1.0)
                         
                         if not done:
-                            # Tarda más de 0.8s -> Disparar muletilla para rellenar silencio
-                            if func_name == "search_properties":
-                                yield "Un momento, estoy verificando el inventario. "
-                            elif func_name == "schedule_visits":
-                                yield "Claro, revisando la agenda. "
-                            elif func_name == "check_location_context":
-                                yield "Revisando ubicación. "
-                                
+                            import random
+                            muletillas = [
+                                "Veamos.", "Dame un segundo.", "Permíteme revisar.", 
+                                "A ver.", "Un instante.", "Déjame chequear."
+                            ]
+                            yield random.choice(muletillas) + " "
                             data = await tool_task # Esperar pacientemente el resto del tiempo
                         else:
                             data = tool_task.result()

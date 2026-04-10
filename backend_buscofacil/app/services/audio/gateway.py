@@ -47,6 +47,22 @@ class VoiceGatewayManager:
         project_id = authenticated_project_id or websocket.query_params.get("project_id", "default")
         
         voice_id = websocket.query_params.get("voice", "")
+        
+        # Override voice_id with database configuration if it exists
+        try:
+            from app.db.session import SessionLocal
+            from app.db.models import VoiceSettings
+            db = SessionLocal()
+            try:
+                voice_config = db.query(VoiceSettings).filter(VoiceSettings.project_id == project_id).first()
+                if voice_config and voice_config.voice_id:
+                    voice_id = voice_config.voice_id
+                    print(f"✅ Usando voz configurada en BD: {voice_id} para {project_id}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️ No se pudo obtener la configuración de voz de la BD: {e}")
+
         voice_gender = websocket.query_params.get("voice_gender", "").lower()
         print(f"🗣️ CONFIGURACIÓN DE VOZ FRONTEND -> voice_id: '{voice_id}' | voice_gender: '{voice_gender}'")
         

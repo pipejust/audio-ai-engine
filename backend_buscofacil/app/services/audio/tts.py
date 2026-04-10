@@ -22,12 +22,15 @@ class TTSEngine:
             
         # Mapeo de voces del frontend a IDs específicos de ElevenLabs
         voice_map = {
-            "echo": os.getenv("ELEVENLABS_VOICE_MALE", "GpnOed0ndzjm6Pc8JALF"), # Felipe (Latino Masculino)
+            "echo": os.getenv("ELEVENLABS_VOICE_MALE", "cjVigY5qzO86Hvf0A3Tq"), # Felipe (Latino Masculino)
             "alloy": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"), # Latina/Neutral Femenina
             "shimmer": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
         }
         
-        target_voice_id = voice_map.get(voice_name, self.voice_id)
+        if voice_name not in voice_map and len(voice_name) > 10:
+            target_voice_id = voice_name
+        else:
+            target_voice_id = voice_map.get(voice_name, self.voice_id)
             
         print(f"🔊 Generando audio en ElevenLabs (Voz: {voice_name}) para: '{text}'...")
         
@@ -66,11 +69,16 @@ class TTSEngine:
         redis = voice_session.redis
 
         voice_map = {
-            "echo": os.getenv("ELEVENLABS_VOICE_MALE", "GpnOed0ndzjm6Pc8JALF"),
+            "echo": os.getenv("ELEVENLABS_VOICE_MALE", "cjVigY5qzO86Hvf0A3Tq"),
             "alloy": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
             "shimmer": os.getenv("ELEVENLABS_VOICE_FEMALE", "VmejBeYhbrcTPwDniox7"),
         }
-        target_voice_id = voice_map.get(voice_name, self.voice_id)
+        
+        # Si voice_name parece un ID directo de ElevenLabs (ej. 21m00Tcm4...), lo usamos directo
+        if voice_name not in voice_map and len(voice_name) > 10:
+            target_voice_id = voice_name
+        else:
+            target_voice_id = voice_map.get(voice_name, self.voice_id)
         
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice_id}/stream?output_format=pcm_24000"
         headers = {

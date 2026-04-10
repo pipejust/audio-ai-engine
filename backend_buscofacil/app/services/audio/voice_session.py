@@ -72,9 +72,9 @@ class VoiceSession:
             except asyncio.CancelledError:
                 pass
  
-        # 3. Notificar cliente — detener reproducción
+        # 3. Notificar cliente — detener reproducción de manera segura en esquema OpenAI
         try:
-            await self.ws.send_json({'type': 'tts_stop'})
+            await self.ws.send_json({'type': 'response.audio_transcript.done'})
         except:
             pass
  

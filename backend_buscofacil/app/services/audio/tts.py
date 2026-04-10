@@ -120,10 +120,17 @@ class TTSEngine:
                         try:
                             await ws.send_json({"type": "response.audio_transcript.delta", "delta": chars[chars_sent:]})
                         except Exception: pass
+
+                    # Sellar oficialmente la caja de texto en la vista UI para demarcar el final completo
+                    try:
+                        await ws.send_json({"type": "response.audio_transcript.done"})
+                    except Exception: pass
                         
         except asyncio.CancelledError:
-            # Barge-in canceló la tarea — silenciar cliente
-            await ws.send_json({'type': 'response.cancel'})
+            # Barge-in canceló la tarea — silenciar cliente cerrando el transcript de urgencia
+            try:
+                await ws.send_json({'type': 'response.audio_transcript.done'})
+            except Exception: pass
             raise
         except Exception as e:
             print(f"❌ Error en TTS Streaming HTTP: {e}")

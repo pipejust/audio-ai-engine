@@ -191,3 +191,10 @@ class VoiceSession:
                 pass
             self.did_emit_text = True
         await self.tts_queue.put(text)
+    def close(self):
+        if self.tts_worker_task and not self.tts_worker_task.done():
+            self.tts_worker_task.cancel()
+        if self.llm_task and not self.llm_task.done():
+            self.llm_task.cancel()
+        if self.tts_task and not self.tts_task.done():
+            self.tts_task.cancel()

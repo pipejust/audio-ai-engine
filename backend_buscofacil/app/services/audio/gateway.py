@@ -172,6 +172,9 @@ class VoiceGatewayManager:
                         
                         data = json.loads(text_data)
                         if data.get("type") == "input_audio_buffer.append":
+                            if getattr(voice_session, 'is_audio_playing', False):
+                                continue # HALF-DUPLEX MUTE: Ignorar eco del micrófono
+                                
                             audio_b64 = data.get("audio", "")
                             if audio_b64:
                                 raw_pcm = base64.b64decode(audio_b64)
@@ -181,7 +184,11 @@ class VoiceGatewayManager:
                                 has_useful_audio = True
                                 
                         elif data.get("type") == "response.cancel":
-                            # Botón rojo presionado o VAD Frontend detecta interrupción explícita
+                            if getattr(voice_session, 'is_audio_playing', False):
+                                print("🔇 Ignorando response.cancel falso por eco del propio TTS")
+                                continue
+                                
+                            # Moshwasi Frontend VAD detecta interrupción explícita por voz o click
                             print("🛑 Interrupción explícita recibida (response.cancel)")
                             if self.current_task and not self.current_task.done():
                                 self.current_task.cancel()
@@ -232,6 +239,7 @@ class VoiceGatewayManager:
             print(f"❌ Error en flujo WebSocket Groq Pipeline: {e}")
             self.disconnect(websocket)
         finally:
+            if voice_session: voice_session.close()
             if redis_task: redis_task.cancel()
             if r: await r.close()
 

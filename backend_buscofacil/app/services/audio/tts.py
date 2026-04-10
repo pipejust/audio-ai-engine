@@ -147,7 +147,9 @@ class TTSEngine:
                         print(f"⚠️ WS cerrado antes de mandar audio: {e}")
                         return
                     # Tipeo secuencial ESTRICTO (bloqueante) para evitar audios y textos sobrepuestos
+                    setattr(voice_session, 'is_audio_playing', True)
                     await self._simulate_typing(chars, len(full_pcm), ws, session_id, redis, voice_session)
+                    setattr(voice_session, 'is_audio_playing', False)
                         
         except asyncio.CancelledError:
             try: await ws.send_json({'type': 'response.audio_transcript.done'})
@@ -190,3 +192,5 @@ class TTSEngine:
             
         except asyncio.CancelledError:
             raise
+        finally:
+            setattr(voice_session, 'is_audio_playing', False)

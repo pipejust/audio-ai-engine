@@ -49,7 +49,7 @@ class VoiceSession:
         self.context    = ConversationContext(dynamic_prompt=dynamic_prompt)
         self.agent_manager = agent_manager
         self.tts_engine = tts_engine
-        self.current_voice_id = "alloy"
+        self.current_voice_id = "" # Sera inyectado por el gateway
         self.tts_queue = asyncio.Queue()
         self.tts_worker_task = asyncio.create_task(self._tts_worker())
  

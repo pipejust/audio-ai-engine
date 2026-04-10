@@ -338,15 +338,33 @@ class AgentManager:
                     tool_req = ToolRequest(project_id=project_id, args=args, currency=currency)
                     try:
                         import asyncio
-                        data = await asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest())
+                        # Hilo en background para no bloquear
+                        tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
+                        
+                        done, pending = await asyncio.wait([tool_task], timeout=0.8)
+                        
+                        if not done:
+                            # Tarda más de 0.8s -> Disparar muletilla para rellenar silencio
+                            if func_name == "search_properties":
+                                yield "Un momento, estoy verificando el inventario... "
+                            elif func_name == "schedule_visits":
+                                yield "Claro, dame un segundo para revisar la agenda... "
+                            elif func_name == "check_location_context":
+                                yield "Revisando ubicación, un instante... "
+                                
+                            data = await tool_task # Esperar pacientemente el resto del tiempo
+                        else:
+                            data = tool_task.result()
+                            
                         result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
                         
                         if websocket and isinstance(data, dict):
                             if "raw_properties" in data:
                                 try:
-                                    # Inyectar moneda en cada inmueble para que Frontend pueda pintarlo en UI
+                                    # Inyectar moneda explícitamente doble por conveniencia
                                     for prop in data["raw_properties"]:
                                         prop["ui_currency"] = currency
+                                        prop["currency"] = currency
                                     await websocket.send_json({"status": "search_results", "listings": data["raw_properties"]})
                                 except Exception: pass
                             if "action" in data:

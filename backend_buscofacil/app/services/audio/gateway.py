@@ -161,6 +161,20 @@ class VoiceGatewayManager:
                                 audio_buffer.extend(raw_pcm)
                                 has_useful_audio = True
                                 
+                        elif data.get("type") == "response.cancel":
+                            # Botón rojo presionado o VAD Frontend detecta interrupción explícita
+                            print("🛑 Interrupción explícita recibida (response.cancel)")
+                            if self.current_task and not self.current_task.done():
+                                self.current_task.cancel()
+                            if r:
+                                await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
+                            else:
+                                await voice_session.handle_interruption()
+                            # Limpiar buffers
+                            audio_buffer.clear()
+                            has_useful_audio = False
+                            continue
+                            
                         elif data.get("type") == "input_audio_buffer.commit":
                             if not has_useful_audio or not audio_buffer:
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles.")

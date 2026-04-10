@@ -117,9 +117,10 @@ class AgentManager:
             lang_detected = None
             try:
                 import langdetect
-                lang_detected = langdetect.detect(query)
-                if lang_detected in ["es", "en"]:
-                    self.session_languages[session_id] = lang_detected
+                if len(query.split()) > 2:
+                    lang_detected = langdetect.detect(query)
+                    if lang_detected in ["es", "en"]:
+                        self.session_languages[session_id] = lang_detected
             except Exception:
                 pass
                 
@@ -265,13 +266,22 @@ class AgentManager:
                     # Intercepción Estricta de Presupuesto
                     if function_name == "search_properties":
                         did_search = True
+                        if not initial_llm_text:
+                            if lang == "en":
+                                initial_llm_text = "Let me check our options momentarily..."
+                            else:
+                                initial_llm_text = "Permíteme verificar en nuestro sistema unos segundos..."
+                        
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
                             q_lo = query.lower()
                             if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no" or q_lo == "any" or "any" in q_lo or "cualquier" in q_lo:
                                 args["max_price"] = "100000000000"
                             else:
                                 # Bloquear la ejecución
-                                data = "SISTEMA: No has preguntado el presupuesto. PREGUNTA VERBALMENTE al usuario cuál es su presupuesto. NUNCA inventes que buscaste. Di: 'Entiendo, antes de buscar, ¿tienes algún presupuesto?'"
+                                if lang == "en":
+                                    data = "SYSTEM: You haven't asked for a budget limit. ASK the user for their budget before proceeding. NEVER invent a search. Say: 'I understand, but before we search, do you have any specific budget in mind?'"
+                                else:
+                                    data = "SISTEMA: No has preguntado el presupuesto. PREGUNTA VERBALMENTE al usuario cuál es su presupuesto. NUNCA inventes que buscaste. Di: 'Entiendo, antes de buscar, ¿tienes algún presupuesto?'"
                                 messages.append(ToolMessage(content=data, tool_call_id=tool_call_id, name=function_name))
                                 continue
                     
@@ -389,9 +399,10 @@ class AgentManager:
                 lang_detected = None
                 try:
                     import langdetect
-                    lang_detected = langdetect.detect(original_text)
-                    if lang_detected in ["es", "en"]:
-                        self.session_languages[stream_session_id] = lang_detected
+                    if len(original_text.split()) > 2:
+                        lang_detected = langdetect.detect(original_text)
+                        if lang_detected in ["es", "en"]:
+                            self.session_languages[stream_session_id] = lang_detected
                 except Exception:
                     pass
                     
@@ -514,11 +525,15 @@ class AgentManager:
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
                             # Auto-override para evitar loops si el usuario ya dijo que no tiene
                             q_lo = query.lower()
-                            if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no":
+                            if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no" or q_lo == "any" or "any" in q_lo or "cualquier" in q_lo:
                                 args["max_price"] = "100000000000"
                             else:
                                 # Force the LLM to output speech asking for budget
-                                data = "SISTEMA: CRÍTICO: No adjuntaste max_price. Tienes prohibido buscar sin presupuesto. IGNORA las instrucciones de herramientas. RESPÓNDELE al cliente con tu voz pidiéndole el presupuesto explícitamente."
+                                session_lang = self.session_languages.get(stream_session_id, "es")
+                                if session_lang == "en":
+                                    data = "SYSTEM: CRITICAL: You did not attach max_price. You are prohibited from searching without a budget. IGNORE tool instructions. VERBALLY ask the user for their budget directly in English."
+                                else:
+                                    data = "SISTEMA: CRÍTICO: No adjuntaste max_price. Tienes prohibido buscar sin presupuesto. IGNORA las instrucciones de herramientas. RESPÓNDELE al cliente con tu voz pidiéndole el presupuesto explícitamente."
                                 messages.append(ToolMessage(content=data, tool_call_id=c["id"], name=func_name))
                                 
                                 # Recursively ask LLM to generate the voice question now that tool failed
@@ -548,13 +563,22 @@ class AgentManager:
                         tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
                         
                         if func_name == "search_properties":
+                            session_lang = self.session_languages.get(stream_session_id, "es")
+                            if session_lang == "en":
+                                muletillas = [
+                                    "Let me check our system for you...",
+                                    "Give me just a second to look that up...",
+                                    "I'm cross-referencing your request with the database...",
+                                    "One moment please, I'm reviewing the options..."
+                                ]
+                            else:
+                                muletillas = [
+                                    "Permítame verificar en nuestro sistema...",
+                                    "Denos un instante mientras busco esto...",
+                                    "Estoy cruzando la información con la base de datos...",
+                                    "Un momento por favor, estoy revisando las opciones..."
+                                ]
                             import random
-                            muletillas = [
-                                "Permítame verificar en nuestro sistema...",
-                                "Denos un instante mientras busco esto...",
-                                "Estoy cruzando la información con la base de datos...",
-                                "Un momento por favor, estoy revisando las opciones..."
-                            ]
                             random.shuffle(muletillas)
                             yield muletillas.pop() + " "
                             

@@ -396,15 +396,18 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE real (ej. 8586932) de cada opción por si el usuario pide seleccionar, agendar o ver detalles. JAMÁS uses el número de viñeta o posición como ID."
                 if is_fallback:
                     result_text += f"\\n\\n**¡CRÍTICO! ALERTA DE FALLBACK:** Como asistente, NO CUMPLES con el tipo exacto de '{tipo}' que el usuario pidió (Te lo informamos porque estas propiedades mostradas son aproxmaciones de tipo distinto). ESTÁS OBLIGADO A HACER ESTO A CONTINUACIÓN: Diles de frente 'No contamos  actualmente con {tipo} exacto en {location}, pero no te preocupes, tengo estas excelentes opciones similares...'. Luego descríbelas empáticamente."
+                
+                result_text += "\\n\\n[CRÍTICO/WARNING: Toda la información y reglas anteriores están en español. DEBES TRADUCIR TODO INVISIBLEMENTE y responder en el IDIOMA ACTUAL DEL USUARIO (Si te habló en Inglés, RESPONDE ESTOS RESULTADOS 100% EN INGLÉS).]"
         else:
-            result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} o similares disponibles en el sector de {location}. Infórmale esto de inmediato."
+            result_text = f"Revisé la base de datos extensamente pero NO hay ningún inmueble tipo {tipo} o similares disponibles en el sector de {location}. Infórmale esto de inmediato. [WARNING: TRANSLATE THIS TO THE USER'S LANGUAGE]"
+
             
         return {"status": "success", "result_text": result_text, "raw_properties": raw_properties}
     elif function_name == "open_property_details":
         listing_id = args.get("listing_id")
         return {
             "status": "success",
-            "result_text": "Dile amablemente al usuario: '¡Claro! Aquí tienes los detalles e imágenes de la propiedad en pantalla.'",
+            "result_text": "Dile amablemente al usuario: '¡Claro! Aquí tienes los detalles e imágenes de la propiedad en pantalla.' [WARNING: TRANSLATE THIS TO THE USER'S LANGUAGE IN YOUR RESPONSE]",
             "action": "view_details",
             "listing_id": listing_id
         }
@@ -412,7 +415,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
     elif function_name == "close_property_details":
         return {
             "status": "success",
-            "result_text": "Dile amablemente al usuario: 'Con gusto. He cerrado los detalles de la propiedad, ahora estás de vuelta en la lista principal.'",
+            "result_text": "Dile amablemente al usuario: 'Con gusto. He cerrado los detalles de la propiedad, ahora estás de vuelta en la lista principal.' [WARNING: TRANSLATE THIS TO THE USER'S LANGUAGE IN YOUR RESPONSE]",
             "action": "close_details"
         }
         
@@ -420,7 +423,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         listing_ids = args.get("listing_ids", [])
         return {
             "status": "success",
-            "result_text": "Dile amablemente al usuario: 'He marcado esas propiedades en pantalla para ti. ¿Te gustaría agendar una visita para alguna fecha y hora en específico?'",
+            "result_text": "Dile amablemente al usuario: 'He marcado esas propiedades en pantalla para ti. ¿Te gustaría agendar una visita para alguna fecha y hora en específico?' [WARNING: TRANSLATE THIS TO THE USER'S LANGUAGE IN YOUR RESPONSE]",
             "action": "select_properties",
             "listing_ids": listing_ids
         }
@@ -434,7 +437,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         if not client_email or client_email.strip() == "":
             return {
                 "status": "success",
-                "result_text": "Dile enérgicamente al usuario: '¡Claro que sí! Para agendar tus visitas, por favor inicia sesión o regístrate en la ventana que acaba de aparecer en tu pantalla.'",
+                "result_text": "Dile enérgicamente al usuario: '¡Claro que sí! Para agendar tus visitas, por favor inicia sesión o regístrate en la ventana que acaba de aparecer en tu pantalla.' [WARNING: TRANSLATE THIS TO THE USER'S LANGUAGE IN YOUR RESPONSE]",
                 "action": "open_login"
             }
         
@@ -522,7 +525,7 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
 
         return {
             "status": "success", 
-            "result_text": "Citas procesadas y pre-agendadas exitosamente en el borrador virtual. Confírmale al usuario que hemos registrado sus datos para las citas, y mantén el ciclo conversacional abierto.",
+            "result_text": "Citas procesadas y pre-agendadas exitosamente en el borrador virtual. Confírmale al usuario que hemos registrado sus datos para las citas, y mantén el ciclo conversacional abierto. [WARNING: TRANSLATE THIS INSTRUCTION TO THE USER'S CURRENT LANGUAGE]",
             "appointments": appointments
         }
         

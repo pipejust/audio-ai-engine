@@ -448,58 +448,110 @@ class AgentManager:
                     messages[i].content = new_content
                 else:
                     messages[i]["content"] = new_content
-                    
+
                 break
-                
+
+        # ── Pre-check: si el ÚLTIMO mensaje del asistente preguntó por presupuesto,
+        # el mensaje actual del usuario ES su respuesta (precio, rango, o "no tengo").
+        # En todos esos casos, forzar tool_choice="required" para que el LLM llame search_properties.
+        _force_tool_choice = False
+        if project_id == "buscofacil":
+            # Recorrer mensajes en reverso para encontrar el ÚLTIMO mensaje del asistente
+            for _pm in reversed(messages[:-1]):  # Excluir el mensaje actual del usuario
+                _role = (getattr(_pm, "type", None) or
+                         (_pm.get("role", "") if isinstance(_pm, dict) else "") or "")
+                if _role not in ("ai", "assistant"):
+                    continue
+                # Encontramos el último mensaje del asistente
+                _pmc = (getattr(_pm, "content", None) or
+                        (_pm.get("content", "") if isinstance(_pm, dict) else "")) or ""
+                if "presupuesto" in _pmc.lower() or "budget" in _pmc.lower():
+                    _force_tool_choice = True
+                    print("🎯 Pre-check: último mensaje del asistente preguntó presupuesto → tool_choice=required")
+                break  # Solo nos interesa el último mensaje del asistente
+
+        # Groq solo acepta tool_choice con 1 tool y el nombre explícito del tool.
+        # "required" no es un nombre válido — debemos pasar el nombre real de la función.
+        _search_tool_only = [t for t in chat_tools if t["function"]["name"] == "search_properties"]
+        _llm_first = (
+            llm.bind_tools(
+                _search_tool_only,
+                tool_choice={"type": "function", "function": {"name": "search_properties"}}
+            )
+            if _force_tool_choice
+            else llm_with_tools
+        )
+
         try:
             # Iteración 1: Ver si lanza texto directo o pide una tool
             is_tool_call = False
             tool_call_chunks = []
-            
+
             from collections import defaultdict
             import json, re, uuid
             consolidated = defaultdict(lambda: {"name": "", "args": "", "id": ""})
-            
+
+            # FORCED PATH: astream con tool_choice nunca popula tool_call_chunks en LangChain/Groq.
+            # Cuando el pre-check exige búsqueda, usar ainvoke para obtener el tool_call directamente.
+            if _force_tool_choice:
+                try:
+                    _forced_resp = await _llm_first.ainvoke(messages)
+                    _ftc_list = getattr(_forced_resp, "tool_calls", None) or []
+                    if _ftc_list:
+                        is_tool_call = True
+                        for _fi, _ftc in enumerate(_ftc_list):
+                            consolidated[_fi] = {
+                                "name": _ftc["name"],
+                                "args": json.dumps(_ftc["args"]) if isinstance(_ftc["args"], dict) else (_ftc.get("args") or "{}"),
+                                "id": _ftc.get("id", "call_" + str(uuid.uuid4())[:10])
+                            }
+                        print(f"✅ [FORCED] ainvoke → {[t['name'] for t in _ftc_list]}")
+                    else:
+                        print("⚠️ [FORCED] ainvoke no generó tool_calls — cayendo a astream normal")
+                except Exception as _fe:
+                    print(f"⚠️ [FORCED] ainvoke falló: {_fe}")
+
             try:
-                inside_function_tag = False
-                hallucinated_xml = ""
-                async for chunk in llm_with_tools.astream(messages):
-                    tcc = getattr(chunk, 'tool_call_chunks', None) or []
-                    if tcc:
-                        is_tool_call = True
-                        tool_call_chunks.extend(tcc)
-                    elif chunk.content and not is_tool_call:
-                        chunk_text = str(chunk.content)
-                        
-                        # Si encontramos el inicio de un tag, separamos la parte útil antes de iniciar modo captura
-                        if "<function" in chunk_text:
-                            part_before = chunk_text.split("<function")[0]
-                            inside_function_tag = True
-                            hallucinated_xml += chunk_text[len(part_before):] # Acumulamos desde <function
-                            chunk_text = part_before
-                        elif inside_function_tag:
-                            hallucinated_xml += chunk_text
-                            
-                        if inside_function_tag:
-                            if "</function>" in str(chunk.content):
-                                inside_function_tag = False
-                            if not chunk_text.strip():
-                                continue
-                                
-                        if chunk_text:
-                            yield chunk_text
-                            
-                # Al terminar el stream, revisar si extrajimos un tool manual
-                if not is_tool_call and hallucinated_xml:
-                    import re
-                    # Limpiamos el texto capturado para mayor seguridad
-                    match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", hallucinated_xml, re.DOTALL)
-                    if match:
-                        func_name = match.group(1)
-                        func_args_str = match.group(2)
-                        is_tool_call = True
-                        import uuid
-                        consolidated[0] = {"name": func_name, "args": func_args_str, "id": "call_" + str(uuid.uuid4())[:10]}
+                if not is_tool_call:
+                    inside_function_tag = False
+                    hallucinated_xml = ""
+                    async for chunk in _llm_first.astream(messages):
+                        tcc = getattr(chunk, 'tool_call_chunks', None) or []
+                        if tcc:
+                            is_tool_call = True
+                            tool_call_chunks.extend(tcc)
+                        elif chunk.content and not is_tool_call:
+                            chunk_text = str(chunk.content)
+
+                            # Si encontramos el inicio de un tag, separamos la parte útil antes de iniciar modo captura
+                            if "<function" in chunk_text:
+                                part_before = chunk_text.split("<function")[0]
+                                inside_function_tag = True
+                                hallucinated_xml += chunk_text[len(part_before):] # Acumulamos desde <function
+                                chunk_text = part_before
+                            elif inside_function_tag:
+                                hallucinated_xml += chunk_text
+
+                            if inside_function_tag:
+                                if "</function>" in str(chunk.content):
+                                    inside_function_tag = False
+                                if not chunk_text.strip():
+                                    continue
+
+                            if chunk_text:
+                                yield chunk_text
+
+                    # Al terminar el stream, revisar si extrajimos un tool manual
+                    if not is_tool_call and hallucinated_xml:
+                        import re
+                        # Limpiamos el texto capturado para mayor seguridad
+                        match = re.search(r"<function=([a-zA-Z0-9_]+)[\s=]*(\{.*?\})>?</function>", hallucinated_xml, re.DOTALL)
+                        if match:
+                            func_name = match.group(1)
+                            func_args_str = match.group(2)
+                            is_tool_call = True
+                            import uuid
+                            consolidated[0] = {"name": func_name, "args": func_args_str, "id": "call_" + str(uuid.uuid4())[:10]}
 
             except Exception as inner_e:
                 error_msg = str(inner_e)
@@ -532,19 +584,40 @@ class AgentManager:
                         if tcc.get("name"): consolidated[idx]["name"] += tcc["name"]
                         if tcc.get("args"): consolidated[idx]["args"] += tcc["args"]
                         if tcc.get("id"): consolidated[idx]["id"] = tcc["id"]
-                messages.append(AIMessage(content="", tool_calls=[
-                    {"name": c["name"], "args": json.loads(c["args"]), "id": c["id"]} for c in consolidated.values()
-                ]))
-                
-                # Ejecutar
+
+                print(f"🔧 TOOL CALL detectado. consolidated keys: {list(consolidated.keys())}")
+                for _k, _v in consolidated.items():
+                    print(f"   [{_k}] name={_v.get('name')} | args_len={len(_v.get('args',''))} | id={_v.get('id','')[:20]}")
+
+                if not consolidated:
+                    print("⚠️ consolidated está vacío — no hay tools que ejecutar. Respondiendo sin tool context.")
+                    async for chunk in llm_with_tools.astream(messages):
+                        if chunk.content:
+                            yield chunk.content
+                    return
+
+                # Parsear args de forma segura antes de construir el AIMessage
+                parsed_tool_calls = []
                 for c in consolidated.values():
+                    try:
+                        parsed_args = json.loads(c["args"]) if c["args"].strip() else {}
+                    except json.JSONDecodeError as e:
+                        print(f"⚠️ JSON inválido en args de tool '{c['name']}': {e} | raw: {c['args'][:200]}")
+                        parsed_args = {}
+                    parsed_tool_calls.append({"name": c["name"], "args": parsed_args, "id": c["id"]})
+
+                messages.append(AIMessage(content="", tool_calls=parsed_tool_calls))
+
+                # Ejecutar
+                for c, parsed in zip(consolidated.values(), parsed_tool_calls):
                     func_name = c["name"]
-                    args = json.loads(c["args"])
+                    args = parsed["args"]
+                    print(f"▶️  Ejecutando tool: {func_name} | args: {str(args)[:300]}")
                     
                     if func_name == "search_properties":
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
                             # Auto-override para evitar loops si el usuario ya dijo que no tiene
-                            q_lo = query.lower()
+                            q_lo = query.lower().strip().rstrip(".,!?¡¿").strip()
                             if any(word in q_lo for word in ["no ", "no.", "no,", "ningun", "nada", "cero", "sin "]) or q_lo == "no" or q_lo == "any" or "any" in q_lo or "cualquier" in q_lo:
                                 args["max_price"] = "100000000000"
                             else:
@@ -581,37 +654,50 @@ class AgentManager:
                         import asyncio
                         # Hilo en background para no bloquear
                         tool_task = asyncio.create_task(asyncio.to_thread(execute_tool, func_name, tool_req, MockRequest()))
-                        
+
                         if func_name == "search_properties":
                             session_lang = self.session_languages.get(stream_session_id, "es")
                             if session_lang == "en":
                                 muletillas = [
-                                    "Let me check our system for you...",
-                                    "Give me just a second to look that up...",
-                                    "I'm cross-referencing your request with the database...",
-                                    "One moment please, I'm reviewing the options..."
+                                    "Searching our listings database for you...",
+                                    "Applying your filters to the available inventory...",
+                                    "Scanning current listings that match your criteria...",
+                                    "Checking availability across the portfolio...",
+                                    "Reviewing options that fit your requirements...",
+                                    "Cross-referencing your request with our database..."
                                 ]
                             else:
                                 muletillas = [
-                                    "Permítame verificar en nuestro sistema...",
-                                    "Denos un instante mientras busco esto...",
-                                    "Estoy cruzando la información con la base de datos...",
-                                    "Un momento por favor, estoy revisando las opciones..."
+                                    "Consultando la base de datos de propiedades...",
+                                    "Aplicando sus filtros al inventario disponible...",
+                                    "Revisando las opciones que se ajustan a sus criterios...",
+                                    "Verificando disponibilidad en el portafolio actual...",
+                                    "Cruzando su solicitud con nuestra base de datos...",
+                                    "Analizando las propiedades que coinciden con su búsqueda..."
                                 ]
                             import random
                             random.shuffle(muletillas)
                             yield muletillas.pop() + " "
-                            
+
                             muletillas_count = 0
                             while not tool_task.done() and muletillas_count < 2:
-                                done, pending = await asyncio.wait([tool_task], timeout=4.5) # Esto asegura más de 2 segundos de silencio real en TTS
+                                done, pending = await asyncio.wait([tool_task], timeout=4.5)
                                 if not done:
                                     muletillas_count += 1
                                     yield muletillas.pop() + " "
-                        
-                        await tool_task
+
+                        # Timeout de seguridad: si la tool no responde en 20s, abortar
+                        try:
+                            await asyncio.wait_for(asyncio.shield(tool_task), timeout=20.0)
+                        except asyncio.TimeoutError:
+                            tool_task.cancel()
+                            print(f"⏰ Tool '{func_name}' tardó más de 20s. Abortando.")
+                            yield "[CLEAR_MULETILLAS] "
+                            raise TimeoutError(f"Tool {func_name} timeout")
+
                         yield "[CLEAR_MULETILLAS] "
                         data = tool_task.result()
+                        print(f"✅ Tool '{func_name}' completada. result keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}")
                             
                         result_text = data if isinstance(data, str) else data.get("result_text", "Done.")
                         
@@ -649,8 +735,10 @@ class AgentManager:
                                 except Exception as e: print("Error enviando appointments:", e)
                                 
                     except Exception as e:
+                        print(f"❌ Error ejecutando tool '{func_name}': {e}")
+                        yield "[CLEAR_MULETILLAS] "
                         result_text = f"Error: {e}"
-                        
+
                     messages.append(ToolMessage(content=result_text, tool_call_id=c["id"], name=func_name))
                     if session_context and func_name == "search_properties":
                         session_context.tool_results['last_search'] = result_text
@@ -670,6 +758,116 @@ class AgentManager:
                             yield "Aquí tienes los resultados de la búsqueda. Cuéntame qué te parecen. "
                     else:
                         raise inner_e2
+
+            # ── ANTI-LOOP FALLBACK ───────────────────────────────────────────────
+            # Groq Llama a veces genera texto de confirmación ("Entendido, buscaremos...")
+            # sin llamar la herramienta. Detectamos ese patrón y forzamos una segunda
+            # llamada al LLM con un mensaje imperativo para que ejecute search_properties.
+            if not is_tool_call and project_id == "buscofacil":
+                q_lo = query.lower().strip().rstrip(".,!?¡¿").strip()
+                _NO_BUDGET_EXACT = {"no", "sí", "si", "yes", "ok", "okay", "dale", "busca", "buscar"}
+                _NO_BUDGET_PHRASES = [
+                    "no tengo", "no importa", "sin límite", "sin limite",
+                    "sin presupuesto", "cualquier", "sin restriccion", "da igual",
+                    "sin filtro", "no hay", "busca ya", "busca ahora",
+                ]
+                is_no_budget = q_lo in _NO_BUDGET_EXACT or any(p in q_lo for p in _NO_BUDGET_PHRASES)
+
+                budget_was_asked = False
+                if is_no_budget:
+                    for _m in messages[-8:]:
+                        _mc = (getattr(_m, "content", None) or
+                               (_m.get("content", "") if isinstance(_m, dict) else "")) or ""
+                        if "presupuesto" in _mc.lower() or "budget" in _mc.lower():
+                            budget_was_asked = True
+                            break
+
+                if is_no_budget and budget_was_asked:
+                    print("🔄 ANTI-LOOP: LLM generó texto sin tool call. Forzando segunda llamada para search_properties...")
+                    messages.append(SystemMessage(content=(
+                        "ORDEN CRÍTICA FINAL: El usuario ya dijo que no tiene presupuesto. "
+                        "Debes llamar search_properties AHORA MISMO con la ubicación ya discutida. "
+                        "NO generes texto adicional. Solo ejecuta la herramienta."
+                    )))
+                    try:
+                        import uuid as _uuid
+                        from app.routers.tools import execute_tool, ToolRequest
+                        import asyncio as _asyncio
+
+                        # Groq solo acepta tool_choice con exactamente 1 tool y nombre explícito
+                        _search_only = [t for t in chat_tools if t["function"]["name"] == "search_properties"]
+                        _llm_forced = llm.bind_tools(
+                            _search_only,
+                            tool_choice={"type": "function", "function": {"name": "search_properties"}}
+                        )
+                        _forced_resp = await _llm_forced.ainvoke(messages)
+                        _tc_list = getattr(_forced_resp, "tool_calls", None) or []
+
+                        if _tc_list:
+                            _tc = _tc_list[0]
+                            _args = (_tc["args"] if isinstance(_tc["args"], dict)
+                                     else json.loads(_tc["args"]))
+                            _func = _tc["name"]
+                            # Solo forzar max_price cuando el usuario dijo explícitamente que no tiene presupuesto.
+                            # Si dio un precio real ("400 millones", "entre 200 y 300"), el LLM ya lo parseó.
+                            if _func == "search_properties" and is_no_budget and not _args.get("max_price"):
+                                _no_budget_exact = {"no", "sí", "si", "yes", "ok", "okay", "dale"}
+                                _no_budget_phrases = ["no tengo", "sin presupuesto", "sin límite",
+                                                      "sin limite", "cualquier", "sin restriccion",
+                                                      "da igual", "no importa"]
+                                _qlo = query.lower().strip().rstrip(".,!?¡¿").strip()
+                                if (_qlo in _no_budget_exact or
+                                        any(p in _qlo for p in _no_budget_phrases)):
+                                    _args["max_price"] = "100000000000"
+                            _tid = _tc.get("id", "call_" + str(_uuid.uuid4())[:10])
+
+                            class _MockReq:
+                                class _App:
+                                    class _State:
+                                        agent_manager = self
+                                    state = _State()
+                                app = _App()
+
+                            _tool_req = ToolRequest(project_id=project_id, args=_args, currency=currency)
+                            _sl = self.session_languages.get(stream_session_id, "es")
+                            yield ("Searching now... " if _sl == "en" else "Consultando ahora... ")
+
+                            _tt = _asyncio.create_task(
+                                _asyncio.to_thread(execute_tool, _func, _tool_req, _MockReq())
+                            )
+                            await _asyncio.wait_for(_asyncio.shield(_tt), timeout=20.0)
+                            yield "[CLEAR_MULETILLAS] "
+
+                            _data = _tt.result()
+                            _rtxt = (_data if isinstance(_data, str)
+                                     else _data.get("result_text", "Done."))
+
+                            if websocket and isinstance(_data, dict) and "raw_properties" in _data:
+                                for _prop in _data["raw_properties"]:
+                                    _prop["ui_currency"] = currency
+                                    _prop["currency"] = currency
+                                await websocket.send_json({
+                                    "status": "search_results",
+                                    "listings": _data["raw_properties"]
+                                })
+                                print(f"📡 [ANTI-LOOP] {len(_data['raw_properties'])} propiedades enviadas al frontend")
+
+                            messages.append(AIMessage(
+                                content="",
+                                tool_calls=[{"name": _func, "args": _args, "id": _tid}]
+                            ))
+                            messages.append(ToolMessage(content=_rtxt, tool_call_id=_tid, name=_func))
+                            if session_context:
+                                session_context.tool_results["last_search"] = _rtxt
+
+                            async for _c in llm_with_tools.astream(messages):
+                                if _c.content:
+                                    yield _c.content
+                        else:
+                            print("⚠️ [ANTI-LOOP] Segundo llamado LLM tampoco generó tool call — dejando respuesta de texto.")
+                    except Exception as _fe:
+                        print(f"❌ [ANTI-LOOP] Error en forced search: {_fe}")
+            # ── FIN ANTI-LOOP ────────────────────────────────────────────────────
 
         except Exception as e:
             print(f"❌ Error en process_query_stream: {e}")

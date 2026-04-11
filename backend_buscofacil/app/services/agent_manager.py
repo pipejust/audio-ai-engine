@@ -781,7 +781,10 @@ class AgentManager:
             # llamada al LLM con un mensaje imperativo para que ejecute search_properties.
             if not is_tool_call and project_id == "buscofacil":
                 q_lo = query.lower().strip().rstrip(".,!?¡¿").strip()
-                _NO_BUDGET_EXACT = {"no", "sí", "si", "yes", "ok", "okay", "dale", "busca", "buscar"}
+                # Solo palabras que EXPLÍCITAMENTE significan "sin presupuesto" o "busca ya".
+                # "sí/si/yes/ok/okay" son afirmativos genéricos — pueden confirmar barrio,
+                # tipo de inmueble, etc. — y NO deben disparar la búsqueda sin presupuesto.
+                _NO_BUDGET_EXACT = {"no", "dale", "busca", "buscar"}
                 _NO_BUDGET_PHRASES = [
                     "no tengo", "no importa", "sin límite", "sin limite",
                     "sin presupuesto", "cualquier", "sin restriccion", "da igual",

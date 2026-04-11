@@ -914,6 +914,100 @@ class AgentManager:
                             print("⚠️ [ANTI-LOOP] Segundo llamado LLM tampoco generó tool call — dejando respuesta de texto.")
                     except Exception as _fe:
                         print(f"❌ [ANTI-LOOP] Error en forced search: {_fe}")
+            # ── FALLBACK: open/close_property_details ───────────────────────────
+            # Cuando el LLM no llamó ninguna herramienta pero hay propiedades en pantalla
+            # y el usuario claramente pide ver el detalle de una ("la primera", "esa", etc.)
+            # o cerrar el detalle ("volver", "cierra"), ejecutamos la acción directamente.
+            if not is_tool_call and project_id == "buscofacil":
+                _listing_ids = (session_context.tool_results.get('listing_ids', [])
+                                if session_context else [])
+                q_lo_d = query.lower().strip().rstrip(".,!?¡¿").strip()
+
+                # ── Detección: ¿usuario quiere cerrar el detalle? ──────────────
+                _CLOSE_KEYWORDS = ["cierra", "cerrar", "volver", "regresa", "regresar",
+                                   "vuelve", "atrás", "lista", "close", "back"]
+                _wants_close = any(w in q_lo_d for w in _CLOSE_KEYWORDS)
+
+                # ── Detección: ¿usuario quiere abrir un detalle? ───────────────
+                _OPEN_KEYWORDS = ["muéstrame", "muéstramela", "muéstrala", "muestrame",
+                                  "muestramela", "muestrala", "muestra", "ver", "quiero ver",
+                                  "detalle", "detalles", "abre", "abrir", "dame info",
+                                  "más info", "más información", "show", "open",
+                                  "primera", "segundo", "segunda", "tercera", "tercero",
+                                  "cuarta", "cuarto", "esa", "ese", "esta propiedad"]
+                _wants_open = _listing_ids and any(w in q_lo_d for w in _OPEN_KEYWORDS)
+
+                if _wants_close and not _wants_open:
+                    print("🔄 DETAIL-FALLBACK: usuario quiere cerrar detalle → close_property_details")
+                    try:
+                        from app.routers.tools import execute_tool, ToolRequest
+
+                        class _MockReqD:
+                            class _App:
+                                class _State:
+                                    agent_manager = self
+                                state = _State()
+                            app = _App()
+
+                        _close_req = ToolRequest(project_id=project_id, args={}, currency=currency)
+                        _close_data = await asyncio.to_thread(
+                            execute_tool, "close_property_details", _close_req, _MockReqD()
+                        )
+                        if websocket and isinstance(_close_data, dict) and "action" in _close_data:
+                            await websocket.send_json({"status": "action", "action": _close_data["action"]})
+                        yield "Listo, volvamos a la lista. "
+                    except Exception as _de:
+                        print(f"❌ [DETAIL-FALLBACK] close error: {_de}")
+
+                elif _wants_open:
+                    # Determinar qué listing por número ordinal / cardinal
+                    _ORDINALS = {
+                        "primera": 0, "primero": 0, "uno": 0, "1": 0,
+                        "segunda": 1, "segundo": 1, "dos": 1, "2": 1,
+                        "tercera": 2, "tercero": 2, "tres": 2, "3": 2,
+                        "cuarta": 3, "cuarto": 3, "cuatro": 3, "4": 3,
+                        "quinta": 4, "quinto": 4, "cinco": 4, "5": 4,
+                        "sexta": 5, "sexto": 5, "seis": 5, "6": 5,
+                    }
+                    _target_idx = 0  # default: la primera
+                    for _word in q_lo_d.split():
+                        if _word in _ORDINALS and _ORDINALS[_word] < len(_listing_ids):
+                            _target_idx = _ORDINALS[_word]
+                            break
+
+                    _target_id = _listing_ids[_target_idx] if _listing_ids else None
+                    if _target_id:
+                        print(f"🔄 DETAIL-FALLBACK: abriendo propiedad #{_target_idx+1} ID={_target_id}")
+                        try:
+                            from app.routers.tools import execute_tool, ToolRequest
+
+                            class _MockReqO:
+                                class _App:
+                                    class _State:
+                                        agent_manager = self
+                                    state = _State()
+                                app = _App()
+
+                            _open_req = ToolRequest(
+                                project_id=project_id,
+                                args={"listing_id": _target_id},
+                                currency=currency
+                            )
+                            _open_data = await asyncio.to_thread(
+                                execute_tool, "open_property_details", _open_req, _MockReqO()
+                            )
+                            if websocket and isinstance(_open_data, dict) and "action" in _open_data:
+                                await websocket.send_json({
+                                    "status": "action",
+                                    "action": _open_data["action"],
+                                    "listing_id": _open_data.get("listing_id")
+                                })
+                            _sl_d = self.session_languages.get(stream_session_id, "es")
+                            yield ("Here are the details on screen. What do you think? "
+                                   if _sl_d == "en"
+                                   else "Aquí tienes los detalles en pantalla. ¿Qué te parece? ")
+                        except Exception as _oe:
+                            print(f"❌ [DETAIL-FALLBACK] open error: {_oe}")
             # ── FIN ANTI-LOOP ────────────────────────────────────────────────────
 
         except Exception as e:

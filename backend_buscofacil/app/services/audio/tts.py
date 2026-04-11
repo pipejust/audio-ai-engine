@@ -180,12 +180,12 @@ class TTSEngine:
                     # Iniciar tipeo sincronizado con audio total
                     await self._simulate_typing(chars, len(full_pcm), ws, session_id, redis, voice_session)
 
-                    # POST-TTS COOLDOWN: mantener el micrófono muteado 400ms después
-                    # de que el audio termina, para absorber el eco del speaker en la sala.
-                    # Usamos call_later para no bloquear el event loop con await sleep.
+                    # POST-TTS COOLDOWN: mantener el micrófono muteado 150ms después
+                    # de que el audio termina. El browser AEC (echoCancellation: true) absorbe
+                    # el eco en <100ms; 150ms da margen sin bloquear respuestas cortas del usuario.
                     if not getattr(voice_session, 'interrupted', False):
                         loop = asyncio.get_event_loop()
-                        loop.call_later(0.4, lambda: setattr(voice_session, 'post_audio_buffer_active', False))
+                        loop.call_later(0.15, lambda: setattr(voice_session, 'post_audio_buffer_active', False))
                         setattr(voice_session, 'post_audio_buffer_active', True)
                     setattr(voice_session, 'is_audio_playing', False)
                         

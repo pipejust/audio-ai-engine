@@ -139,15 +139,16 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 valid_location = True
                 if loc_norm:
-                    loc_terms = [t.strip() for t in loc_norm.replace(",", " ").split() if t.strip() and len(t.strip()) > 3]
-                    if loc_terms:
-                        # Requerimos al menos 1 coincidencia en vez de TODAS para flexibilizar la búsqueda
-                        matched_any = False
-                        for term in loc_terms:
-                            if term in meta_loc or term in page_norm:
-                                matched_any = True
-                                break
-                        if not matched_any:
+                    barrio_norm_f = normalize_str(neighborhood) if neighborhood else ""
+                    city_norm_f   = normalize_str(city) if city else ""
+
+                    if barrio_norm_f and len(barrio_norm_f) > 2:
+                        # El barrio es el filtro más específico — DEBE coincidir exactamente
+                        if barrio_norm_f not in meta_loc and barrio_norm_f not in page_norm:
+                            valid_location = False
+                    elif city_norm_f and len(city_norm_f) > 2:
+                        # Solo se indicó ciudad — exigir coincidencia de ciudad
+                        if city_norm_f not in meta_loc and city_norm_f not in page_norm:
                             valid_location = False
 
                 type_matched = True

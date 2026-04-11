@@ -940,6 +940,7 @@ class AgentManager:
                 if _wants_close and not _wants_open:
                     print("🔄 DETAIL-FALLBACK: usuario quiere cerrar detalle → close_property_details")
                     try:
+                        import asyncio as _aio_d
                         from app.routers.tools import execute_tool, ToolRequest
 
                         class _MockReqD:
@@ -950,7 +951,7 @@ class AgentManager:
                             app = _App()
 
                         _close_req = ToolRequest(project_id=project_id, args={}, currency=currency)
-                        _close_data = await asyncio.to_thread(
+                        _close_data = await _aio_d.to_thread(
                             execute_tool, "close_property_details", _close_req, _MockReqD()
                         )
                         if websocket and isinstance(_close_data, dict) and "action" in _close_data:
@@ -960,6 +961,7 @@ class AgentManager:
                         print(f"❌ [DETAIL-FALLBACK] close error: {_de}")
 
                 elif _wants_open:
+                    import asyncio as _aio_o
                     # Determinar qué listing por número ordinal / cardinal
                     _ORDINALS = {
                         "primera": 0, "primero": 0, "uno": 0, "1": 0,
@@ -993,7 +995,7 @@ class AgentManager:
                                 args={"listing_id": _target_id},
                                 currency=currency
                             )
-                            _open_data = await asyncio.to_thread(
+                            _open_data = await _aio_o.to_thread(
                                 execute_tool, "open_property_details", _open_req, _MockReqO()
                             )
                             if websocket and isinstance(_open_data, dict) and "action" in _open_data:

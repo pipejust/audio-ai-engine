@@ -150,8 +150,9 @@ class VoiceGatewayManager:
         # PRE-BUFFER: audio circular grabado mientras Sol habla.
         # Cuando llega barge-in se inyecta al inicio del próximo commit,
         # recuperando la parte de la frase del usuario que se solapó con Sol.
-        # 1.5s × 24000Hz × 2 bytes = 72000 bytes
-        PRE_BUFFER_MAX = 72000
+        # 0.5s × 24000Hz × 2 bytes = 24000 bytes
+        # Mantenerlo corto: 1.5s capturaba demasiado eco de Sol → Whisper transcribía basura.
+        PRE_BUFFER_MAX = 24000
         pre_buffer = bytearray()
 
         try:

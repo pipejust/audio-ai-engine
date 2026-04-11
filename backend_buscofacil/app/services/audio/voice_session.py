@@ -38,8 +38,9 @@ class ConversationContext:
             if mapping:
                 messages.append({'role': 'system', 'content': (
                     f"[MAPEO VISUAL EN PANTALLA]:\n{mapping}\n"
-                    f"(Cuando el usuario diga 'la primera', 'la uno', 'esa', etc., usa OBLIGATORIAMENTE el ID exacto de arriba. "
-                    f"Para abrir el detalle llama view_details. Para cerrar llama close_details.)"
+                    f"(Cuando el usuario diga 'la primera', 'la uno', 'esa', 'el detalle', 'muéstramela', etc., "
+                    f"usa OBLIGATORIAMENTE el ID exacto de arriba y llama open_property_details. "
+                    f"Para volver a la lista llama close_property_details.)"
                 )})
         messages.extend(self.turns)
         return messages
@@ -153,12 +154,15 @@ class VoiceSession:
                 self._stream_llm(accumulator, collector=assistant_text, last_user_text=user_text)
             )
             await self.llm_task
-            # Respuesta completa — guardar contexto
-            self.context.add_turn('assistant', ''.join(assistant_text))
+            full_response = ''.join(assistant_text)
+            if full_response.strip():
+                print(f"🤖 Sol dijo: {full_response[:300]}")
+            self.context.add_turn('assistant', full_response)
         except asyncio.CancelledError:
             # Barge-in ocurrió — guardar lo generado hasta ahora
             partial = ''.join(assistant_text)
             if partial.strip():
+                print(f"🤖 Sol dijo (interrumpido): {partial[:300]}")
                 self.context.add_turn('assistant', partial, interrupted=True)
             raise
         finally:

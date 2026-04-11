@@ -16,7 +16,7 @@ class RAGEngine:
             
         self.llm = ChatGroq(
             groq_api_key=groq_api_key,
-            model_name="llama3-8b-8192", # Modelo muy rápido ideal para audio
+            model_name="llama-3.1-8b-instant", # Modelo muy rápido ideal para audio
             temperature=0.3,
             max_tokens=256 # Respuestas concisas para TTS
         )

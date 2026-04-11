@@ -18,11 +18,12 @@ class VectorStoreManager:
             self.vectorstore = None
             return
 
-        # Modelo local multilingüe (español + inglés) — zero costo, zero API externa.
-        # 384 dimensiones, ~120MB en disco. No requiere OPENAI_API_KEY.
-        print("Cargando modelo de Embeddings local (sentence-transformers multilingüe)...")
+        # Modelo local multilingüe — static-similarity-mrl-multilingual-v1
+        # 1024 dimensiones con Matryoshka (MRL). ~125x más rápido en CPU que MiniLM.
+        # 50+ idiomas incluyendo español. Zero costo, zero API externa.
+        print("Cargando modelo de Embeddings local (static-similarity-mrl-multilingual-v1)...")
         self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            model_name="sentence-transformers/static-similarity-mrl-multilingual-v1",
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True}
         )
@@ -31,9 +32,9 @@ class VectorStoreManager:
         if db_url and db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-        # Nombre de colección diferente porque las dimensiones cambiaron (384 vs 1536 de OpenAI).
-        # Si necesitas migrar los datos existentes, re-ingesta con el script de seed.
-        self.collection_name = "audio_rag_knowledge_hf"
+        # Nueva colección: dimensiones 1024 (vs 384 de MiniLM-HF anterior).
+        # ⚠️ Requiere re-ingesta del contenido con el script de seed.
+        self.collection_name = "audio_rag_knowledge_static"
         
         try:
             if db_url and db_url.startswith("sqlite"):

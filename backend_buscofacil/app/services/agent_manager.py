@@ -5,6 +5,71 @@ from langchain_core.messages import SystemMessage
 from app.services.vector_store import VectorStoreManager
 from app.core.prompts import get_agent_instructions
 
+# Semilla fija para detección determinista (evita que el mismo texto dé idiomas distintos)
+try:
+    from langdetect import detect as _ld_detect, DetectorFactory
+    DetectorFactory.seed = 0
+    _HAS_LANGDETECT = True
+except Exception:
+    _HAS_LANGDETECT = False
+
+# Wordsets amplios para detección heurística como segunda capa
+_EN_WORDS = {
+    "i", "you", "me", "my", "is", "are", "do", "what", "where", "how",
+    "want", "find", "looking", "please", "house", "yes", "hello", "hi",
+    "the", "a", "an", "and", "or", "not", "can", "will", "would", "should",
+    "have", "has", "been", "need", "like", "get", "from", "with", "this",
+    "that", "it", "we", "they", "he", "she", "if", "but", "so", "no",
+    "ok", "okay", "sure", "great", "good", "apartment", "room", "price",
+}
+_ES_WORDS = {
+    "yo", "tu", "tú", "me", "mi", "es", "son", "que", "qué", "donde",
+    "dónde", "como", "cómo", "quiero", "busco", "por", "casa", "si", "sí",
+    "hola", "el", "la", "los", "las", "un", "una", "y", "o", "no",
+    "tengo", "necesito", "puedo", "puede", "hay", "está", "están", "para",
+    "con", "del", "pero", "también", "más", "bien", "bueno", "gracias",
+    "apartamento", "habitación", "precio", "cuanto", "cuánto", "quiero",
+}
+
+
+def _detect_language(text: str, session_id: str, session_languages: dict) -> str:
+    """
+    Detección de idioma multicapa con fallback robusto.
+    1. langdetect con seed determinista (si disponible y texto > 2 palabras)
+    2. Heurística de wordsets ampliados (capa de verificación)
+    3. Persiste el idioma detectado en session_languages
+    4. Fallback a español si no hay señal clara
+    """
+    text_clean = text.strip()
+    words = set(text_clean.lower().replace(",", " ").replace(".", " ")
+                .replace("?", " ").replace("!", " ").split())
+
+    detected = None
+
+    # Capa 1: langdetect (determinista)
+    if _HAS_LANGDETECT and len(words) >= 2:
+        try:
+            result = _ld_detect(text_clean)
+            if result in ("es", "en", "pt", "fr"):
+                detected = "es" if result in ("es", "pt") else "en"
+        except Exception:
+            pass
+
+    # Capa 2: heurística de palabras (verificación o fallback)
+    en_count = len(words & _EN_WORDS)
+    es_count = len(words & _ES_WORDS)
+
+    if en_count >= 2 and en_count > es_count:
+        detected = "en"
+    elif es_count >= 2 and es_count > en_count:
+        detected = "es"
+
+    # Capa 3: persistir en sesión solo si hay señal clara
+    if detected in ("es", "en"):
+        session_languages[session_id] = detected
+
+    return session_languages.get(session_id, "es")
+
 class AgentManager:
     def __init__(self):
         groq_api_key = os.getenv("GROQ_API_KEY")
@@ -114,32 +179,7 @@ class AgentManager:
             history = self.sessions[session_id][-40:]
             
             # 4. Iniciar la cadena de llamadas
-            # Deteccion heuristica de idioma persistente
-            lang_detected = None
-            try:
-                import langdetect
-                if len(query.split()) > 2:
-                    lang_detected = langdetect.detect(query)
-                    if lang_detected in ["es", "en"]:
-                        self.session_languages[session_id] = lang_detected
-            except Exception:
-                pass
-                
-            if lang_detected not in ["es", "en"]:
-                # Fallback a heuristica de palabras si langdetect falla o detecta otro idioma
-                text_lo = query.lower()
-                en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes", "baby", "hello", "hi"}
-                es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si", "hola", "amor"}
-                words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
-                
-                if session_id not in self.session_languages or len(words.intersection(en_words)) >= 1 or len(words.intersection(es_words)) >= 1:
-                    if len(words.intersection(en_words)) > len(words.intersection(es_words)):
-                        self.session_languages[session_id] = "en"
-                    elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
-                        self.session_languages[session_id] = "es"
-            
-            # Fallback a español si no hay detección
-            lang = self.session_languages.get(session_id, "es")
+            lang = _detect_language(query, session_id, self.session_languages)
             
             if lang == "en":
                 query_with_directive = query + "\n\n[SYSTEM DIRECTIVE: Respond EXCLUSIVELY in English. DO NOT translate names of Colombian cities, but formulate your ENTIRE response in English. It is FORBIDDEN to respond in Spanish even if the user says a Spanish neighborhood.]"
@@ -397,29 +437,7 @@ class AgentManager:
                 
             if is_human:
                 stream_session_id = str(id(history)) if history else "anonymous"
-                lang_detected = None
-                try:
-                    import langdetect
-                    if len(original_text.split()) > 2:
-                        lang_detected = langdetect.detect(original_text)
-                        if lang_detected in ["es", "en"]:
-                            self.session_languages[stream_session_id] = lang_detected
-                except Exception:
-                    pass
-                    
-                if lang_detected not in ["es", "en"]:
-                    text_lo = original_text.lower()
-                    en_words = {"i", "you", "me", "my", "is", "are", "do", "what", "where", "how", "want", "find", "looking", "please", "house", "yes", "baby", "hello", "hi"}
-                    es_words = {"yo", "tu", "me", "mi", "es", "son", "hacer", "que", "dónde", "como", "quiero", "encontrar", "buscando", "por", "casa", "si", "hola", "amor"}
-                    words = set(text_lo.replace(",", " ").replace(".", " ").replace("?", " ").split())
-                    
-                    if stream_session_id not in self.session_languages or len(words.intersection(en_words)) >= 1 or len(words.intersection(es_words)) >= 1:
-                        if len(words.intersection(en_words)) > len(words.intersection(es_words)):
-                            self.session_languages[stream_session_id] = "en"
-                        elif len(words.intersection(es_words)) > len(words.intersection(en_words)):
-                            self.session_languages[stream_session_id] = "es"
-                
-                lang = self.session_languages.get(stream_session_id, "es")
+                lang = _detect_language(original_text, stream_session_id, self.session_languages)
                 
                 if lang == "en":
                     new_content = original_text + "\n\n[SYSTEM DIRECTIVE: Respond EXCLUSIVELY in English. DO NOT translate names of Colombian cities, but formulate your ENTIRE response in English. It is FORBIDDEN to respond in Spanish even if the user says a Spanish neighborhood. Never output manual XML <function> tags.]"

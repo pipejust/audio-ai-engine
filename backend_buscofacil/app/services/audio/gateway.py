@@ -167,8 +167,11 @@ class VoiceGatewayManager:
 
                         data = json.loads(text_data)
                         if data.get("type") == "input_audio_buffer.append":
-                            if getattr(voice_session, 'is_audio_playing', False):
-                                continue # HALF-DUPLEX MUTE: Ignorar eco del micrófono
+                            # HALF-DUPLEX MUTE + POST-TTS COOLDOWN:
+                            # Bloquear mic mientras AI habla Y durante 400ms post-TTS
+                            # para absorber el eco del speaker antes de reactivar escucha.
+                            if getattr(voice_session, 'is_audio_playing', False) or getattr(voice_session, 'post_audio_buffer_active', False):
+                                continue
 
                             audio_b64 = data.get("audio", "")
                             if audio_b64:
@@ -260,6 +263,12 @@ class VoiceGatewayManager:
                     await voice_session.handle_interruption()
             
             print(f"🗣️ Usuario dijo: {transcription}")
+
+            # GUARD: si el usuario ya detuvo la conversación mientras el STT procesaba,
+            # descartar esta transcripción — no enviar texto viejo al frontend.
+            if getattr(voice_session, 'interrupted', False):
+                print("🚫 Transcripción descartada: conversación detenida durante STT.")
+                return
 
             # Emitir eventos nativos de OpenAI para que el frontend dibuje las burbujas de chat
             await self._send_json(voice_session.ws, {

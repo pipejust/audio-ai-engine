@@ -143,17 +143,16 @@ def read_root():
 @app.post("/chat")
 async def chat_with_agent(request: ChatRequest):
     """
-    Endpoint principal de texto. El Agent Manager evaluará la consulta,
-    decidirá si necesita consultar la base vectorial, raspar una web, 
-    o simplemente responder basándose en su conocimiento.
+    Endpoint de texto (respuesta completa). Mantener para compatibilidad.
+    Para respuesta progresiva usar /chat/stream (SSE).
     """
     c_name = request.client_name or request.clientName
     c_email = request.client_email or request.clientEmail
     c_phone = request.client_phone or request.clientPhone
-    
+
     result = agent_manager.process_query(
-        request.query, 
-        request.project_id, 
+        request.query,
+        request.project_id,
         request.session_id,
         request.context_listing_ids,
         c_name,
@@ -162,6 +161,54 @@ async def chat_with_agent(request: ChatRequest):
         request.currency
     )
     return result
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Endpoint de texto con streaming SSE (Server-Sent Events).
+    El cliente recibe tokens del LLM conforme se generan, igual que ChatGPT.
+    Formato de eventos:
+      data: {"text": "token"}  → token de respuesta
+      data: [DONE]             → respuesta completa
+    """
+    from fastapi.responses import StreamingResponse
+    import json as _json
+
+    c_name = request.client_name or request.clientName
+    c_email = request.client_email or request.clientEmail
+    c_phone = request.client_phone or request.clientPhone
+
+    async def generate():
+        try:
+            async for token in agent_manager.process_query_stream(
+                query=request.query,
+                history=agent_manager.sessions.get(request.session_id, [])[-40:],
+                project_id=request.project_id,
+                client_name=c_name,
+                client_email=c_email,
+                client_phone=c_phone,
+                currency=request.currency,
+                websocket=None,        # Sin WebSocket en modo texto
+                session_context=None,
+            ):
+                # Filtrar tokens internos de control
+                if token and not token.startswith("[") and token.strip():
+                    yield f"data: {_json.dumps({'text': token})}\n\n"
+        except Exception as e:
+            yield f"data: {_json.dumps({'error': str(e)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # Desactivar buffering en Nginx/Vercel
+            "Connection": "keep-alive",
+        }
+    )
 
 # Configuración del Gateway de Voz Full Duplex
 from fastapi import WebSocket

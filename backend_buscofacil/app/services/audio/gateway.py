@@ -201,7 +201,12 @@ class VoiceGatewayManager:
                             if not has_useful_audio or not audio_buffer:
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles.")
                                 continue
-                            
+
+                            # Nuevo turno del usuario → limpiar flag de interrupción previa.
+                            # El eco del saludo puede haber seteado interrupted=True antes de que
+                            # el usuario hablara. Al recibir un commit nuevo, ese estado ya no aplica.
+                            setattr(voice_session, 'interrupted', False)
+
                             print("✅ Commit aceptado. Evaluando STT (Semantic Barge-in)...")
                             
                             wav_io = io.BytesIO()

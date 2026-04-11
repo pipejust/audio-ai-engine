@@ -464,9 +464,10 @@ class AgentManager:
                 inside_function_tag = False
                 hallucinated_xml = ""
                 async for chunk in llm_with_tools.astream(messages):
-                    if chunk.tool_call_chunks:
+                    tcc = getattr(chunk, 'tool_call_chunks', None) or []
+                    if tcc:
                         is_tool_call = True
-                        tool_call_chunks.extend(chunk.tool_call_chunks)
+                        tool_call_chunks.extend(tcc)
                     elif chunk.content and not is_tool_call:
                         chunk_text = str(chunk.content)
                         

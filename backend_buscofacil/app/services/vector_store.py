@@ -1,7 +1,7 @@
 import os
 try:
     from langchain_community.vectorstores.pgvector import PGVector
-    from langchain_openai import OpenAIEmbeddings
+    from langchain_community.embeddings import HuggingFaceEmbeddings
     HAS_ML = True
 except ImportError:
     HAS_ML = False
@@ -12,24 +12,28 @@ class VectorStoreManager:
         if is_vercel:
             os.environ["HF_HOME"] = "/tmp/huggingface"
             os.environ["TRANSFORMERS_CACHE"] = "/tmp/huggingface"
-        
+
         if not HAS_ML:
             print("⚠️ Ejecutando sin dependencias ML (Vercel). VectorStore desactivado.")
             self.vectorstore = None
             return
 
-        print("Cargando modelo de Embeddings (OpenAI API)...")
-        openai_key = os.getenv("OPENAI_API_KEY")
-        self.embeddings = OpenAIEmbeddings(
-            openai_api_key=openai_key,
-            model="text-embedding-3-small"
+        # Modelo local multilingüe (español + inglés) — zero costo, zero API externa.
+        # 384 dimensiones, ~120MB en disco. No requiere OPENAI_API_KEY.
+        print("Cargando modelo de Embeddings local (sentence-transformers multilingüe)...")
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True}
         )
-        
+
         db_url = os.getenv("DATABASE_URL")
         if db_url and db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
-            
-        self.collection_name = "audio_rag_knowledge_oai"
+
+        # Nombre de colección diferente porque las dimensiones cambiaron (384 vs 1536 de OpenAI).
+        # Si necesitas migrar los datos existentes, re-ingesta con el script de seed.
+        self.collection_name = "audio_rag_knowledge_hf"
         
         try:
             if db_url and db_url.startswith("sqlite"):

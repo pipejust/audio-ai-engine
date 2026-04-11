@@ -147,14 +147,20 @@ class VoiceGatewayManager:
 
         audio_buffer = bytearray()
         has_useful_audio = False
-        
+        # PRE-BUFFER: audio circular grabado mientras Sol habla.
+        # Cuando llega barge-in se inyecta al inicio del próximo commit,
+        # recuperando la parte de la frase del usuario que se solapó con Sol.
+        # 1.5s × 24000Hz × 2 bytes = 72000 bytes
+        PRE_BUFFER_MAX = 72000
+        pre_buffer = bytearray()
+
         try:
             while True:
                 message = await websocket.receive()
                 if message.get("type") == "websocket.disconnect":
                     print("🚪 Desconexión nativa del socket detectada desde el frontend.")
                     break
-                    
+
                 if "text" in message:
                     text_data = message["text"]
                     try:
@@ -167,19 +173,22 @@ class VoiceGatewayManager:
 
                         data = json.loads(text_data)
                         if data.get("type") == "input_audio_buffer.append":
-                            # HALF-DUPLEX MUTE + POST-TTS COOLDOWN:
-                            # Bloquear mic mientras AI habla Y durante 400ms post-TTS
-                            # para absorber el eco del speaker antes de reactivar escucha.
+                            audio_b64 = data.get("audio", "")
+                            if not audio_b64:
+                                continue
+                            raw_pcm = base64.b64decode(audio_b64)
+
                             if getattr(voice_session, 'is_audio_playing', False) or getattr(voice_session, 'post_audio_buffer_active', False):
+                                # Sol hablando: no acumular en audio_buffer principal,
+                                # pero sí en pre_buffer circular para recuperar barge-in.
+                                pre_buffer.extend(raw_pcm)
+                                if len(pre_buffer) > PRE_BUFFER_MAX:
+                                    del pre_buffer[:len(pre_buffer) - PRE_BUFFER_MAX]
                                 continue
 
-                            audio_b64 = data.get("audio", "")
-                            if audio_b64:
-                                raw_pcm = base64.b64decode(audio_b64)
-
-                                # Acumular para transcripción final
-                                audio_buffer.extend(raw_pcm)
-                                has_useful_audio = True
+                            # Acumular para transcripción final
+                            audio_buffer.extend(raw_pcm)
+                            has_useful_audio = True
 
                         elif data.get("type") in ("response.cancel", "interruption"):
                             # BARGE-IN INMEDIATO: el usuario habló o clickeó Stop.
@@ -193,8 +202,16 @@ class VoiceGatewayManager:
                                 await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
                             else:
                                 await voice_session.handle_interruption()
+                            # Inyectar pre_buffer al audio_buffer para no perder
+                            # lo que el usuario dijo mientras Sol hablaba.
                             audio_buffer.clear()
-                            has_useful_audio = False
+                            if pre_buffer:
+                                audio_buffer.extend(pre_buffer)
+                                has_useful_audio = True
+                                print(f"🔄 Pre-buffer inyectado: {len(pre_buffer)} bytes recuperados tras barge-in")
+                            else:
+                                has_useful_audio = False
+                            pre_buffer.clear()
                             continue
                             
                         elif data.get("type") == "input_audio_buffer.commit":

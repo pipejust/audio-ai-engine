@@ -42,7 +42,7 @@ class TTSEngine:
         }
         data = {
             "text": text,
-            "model_id": "eleven_turbo_v2_5",
+            "model_id": "eleven_flash_v2_5",
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.5
@@ -88,15 +88,15 @@ class TTSEngine:
         }
         data = {
             "text": text,
-            "model_id": "eleven_turbo_v2_5",
+            "model_id": "eleven_flash_v2_5",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.5}
         }
         
         try:
             import base64
+            import asyncio
             chars = text
-            chars_sent = 0
-            
+
             def create_wav_header(data_size: int) -> bytes:
                 import struct
                 header = bytearray(44)
@@ -105,50 +105,88 @@ class TTSEngine:
                 header[8:12] = b'WAVE'
                 header[12:16] = b'fmt '
                 header[16:20] = struct.pack('<I', 16)
-                header[20:22] = struct.pack('<H', 1) # PCM
-                header[22:24] = struct.pack('<H', 1)   # Mono
+                header[20:22] = struct.pack('<H', 1)    # PCM
+                header[22:24] = struct.pack('<H', 1)    # Mono
                 header[24:28] = struct.pack('<I', 24000) # Sample rate
                 header[28:32] = struct.pack('<I', 24000 * 2) # Byte rate
-                header[32:34] = struct.pack('<H', 2) # Block align
-                header[34:36] = struct.pack('<H', 16) # Bits per sample
+                header[32:34] = struct.pack('<H', 2)    # Block align
+                header[34:36] = struct.pack('<H', 16)   # Bits per sample
                 header[36:40] = b'data'
                 header[40:44] = struct.pack('<I', data_size)
                 return bytes(header)
-            
+
+            # TTS FIRST-BYTE STREAMING: enviar chunks de audio cada ~500ms en vez de
+            # esperar la descarga completa. El usuario escucha la primera sílaba en ~300ms.
+            # Tamaño de chunk: 24000 muestras/s × 2 bytes × 0.5s = 24000 bytes
+            CHUNK_BYTES = 24000  # 500ms de audio PCM16 @ 24kHz
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, headers=headers) as resp:
                     resp.raise_for_status()
-                    
+
+                    pcm_buffer = bytearray()
                     full_pcm = bytearray()
-                    async for chunk in resp.content.iter_chunked(4096):
-                        # Si hay un Barge-in mientras decodifica, abortamos rápido.
-                        if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
-                            print("🛑 TTS abortado por interrupción del usuario (Descarga).")
+                    first_chunk_sent = False
+
+                    async for raw_chunk in resp.content.iter_chunked(4096):
+                        if getattr(voice_session, 'interrupted', False):
+                            print("🛑 TTS abortado por interrupción (descarga).")
                             return
-                        if chunk:
-                            full_pcm.extend(chunk)
-                            
-                    if not full_pcm:
-                        return
-                        
-                    # Mapeo vital para Frontend y abortos nativos
-                    # Si al terminar de bajar el audio ya hubo interrupción ENTONCES NUNCA LO ENVÍES
-                    if (redis and await redis.exists(f'voice:interrupt:{session_id}')) or getattr(voice_session, 'interrupted', False):
-                        print("🛑 TTS abortado justo antes de emitir audio al websocket.")
+                        if not raw_chunk:
+                            continue
+
+                        pcm_buffer.extend(raw_chunk)
+                        full_pcm.extend(raw_chunk)
+
+                        # Enviar en cuanto tengamos 500ms de audio acumulado
+                        while len(pcm_buffer) >= CHUNK_BYTES:
+                            if getattr(voice_session, 'interrupted', False):
+                                return
+                            chunk_pcm = bytes(pcm_buffer[:CHUNK_BYTES])
+                            pcm_buffer = pcm_buffer[CHUNK_BYTES:]
+                            wav_chunk = create_wav_header(len(chunk_pcm)) + chunk_pcm
+                            b64_chunk = base64.b64encode(wav_chunk).decode("utf-8")
+                            if not first_chunk_sent:
+                                # Activar mute del micrófono en el primer chunk
+                                setattr(voice_session, 'is_audio_playing', True)
+                                first_chunk_sent = True
+                            try:
+                                await ws.send_json({"type": "response.audio.delta", "delta": b64_chunk})
+                            except Exception as e:
+                                print(f"⚠️ WS cerrado enviando chunk: {e}")
+                                return
+
+                    # Enviar resto (tail) si no fue interrumpido
+                    if pcm_buffer and not getattr(voice_session, 'interrupted', False):
+                        wav_tail = create_wav_header(len(pcm_buffer)) + bytes(pcm_buffer)
+                        b64_tail = base64.b64encode(wav_tail).decode("utf-8")
+                        if not first_chunk_sent:
+                            setattr(voice_session, 'is_audio_playing', True)
+                            first_chunk_sent = True
+                        try:
+                            await ws.send_json({"type": "response.audio.delta", "delta": b64_tail})
+                        except Exception as e:
+                            print(f"⚠️ WS cerrado enviando tail: {e}")
+                            return
+
+                    if not full_pcm or not first_chunk_sent:
                         return
 
-                    # Pre-empacar TODO el audio como un solo archivo WAV estático para React Native (Fluidez cristalina, cero lluvia/stutter)
-                    wav_full = create_wav_header(len(full_pcm)) + full_pcm
-                    b64_full = base64.b64encode(wav_full).decode("utf-8")
-                    
-                    try:
-                        await ws.send_json({"type": "response.audio.delta", "delta": b64_full})
-                    except Exception as e:
-                        print(f"⚠️ WS cerrado antes de mandar audio: {e}")
+                    if getattr(voice_session, 'interrupted', False):
+                        print("🛑 TTS abortado justo antes del tipeo.")
+                        setattr(voice_session, 'is_audio_playing', False)
                         return
-                    # Tipeo secuencial ESTRICTO (bloqueante) para evitar audios y textos sobrepuestos
-                    setattr(voice_session, 'is_audio_playing', True)
+
+                    # Iniciar tipeo sincronizado con audio total
                     await self._simulate_typing(chars, len(full_pcm), ws, session_id, redis, voice_session)
+
+                    # POST-TTS COOLDOWN: mantener el micrófono muteado 400ms después
+                    # de que el audio termina, para absorber el eco del speaker en la sala.
+                    # Usamos call_later para no bloquear el event loop con await sleep.
+                    if not getattr(voice_session, 'interrupted', False):
+                        loop = asyncio.get_event_loop()
+                        loop.call_later(0.4, lambda: setattr(voice_session, 'post_audio_buffer_active', False))
+                        setattr(voice_session, 'post_audio_buffer_active', True)
                     setattr(voice_session, 'is_audio_playing', False)
                         
         except asyncio.CancelledError:

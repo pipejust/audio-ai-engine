@@ -157,11 +157,6 @@ class VoiceGatewayManager:
                     
                 if "text" in message:
                     text_data = message["text"]
-                    if "interruption" in text_data:
-                        # Ignorar el inestable "interruption: true" del frontend que detectaba cualquier ruido.
-                        # Ahora mandamos a evaluar todo al super-algoritmo matemático del Backend.
-                        continue
-                        
                     try:
                         import base64
                         import io
@@ -169,34 +164,35 @@ class VoiceGatewayManager:
                         import math
                         import struct
                         from app.services.audio.vad import is_human_speech
-                        
+
                         data = json.loads(text_data)
                         if data.get("type") == "input_audio_buffer.append":
-                            if getattr(voice_session, 'is_audio_playing', False):
-                                continue # HALF-DUPLEX MUTE: Ignorar eco del micrófono
-                                
+                            # HALF-DUPLEX MUTE + POST-TTS COOLDOWN:
+                            # Bloquear mic mientras AI habla Y durante 400ms post-TTS
+                            # para absorber el eco del speaker antes de reactivar escucha.
+                            if getattr(voice_session, 'is_audio_playing', False) or getattr(voice_session, 'post_audio_buffer_active', False):
+                                continue
+
                             audio_b64 = data.get("audio", "")
                             if audio_b64:
                                 raw_pcm = base64.b64decode(audio_b64)
-                                
+
                                 # Acumular para transcripción final
                                 audio_buffer.extend(raw_pcm)
                                 has_useful_audio = True
-                                
-                        elif data.get("type") == "response.cancel":
-                            if getattr(voice_session, 'is_audio_playing', False):
-                                print("🔇 Ignorando response.cancel falso por eco del propio TTS")
-                                continue
-                                
-                            # Moshwasi Frontend VAD detecta interrupción explícita por voz o click
-                            print("🛑 Interrupción explícita recibida (response.cancel)")
+
+                        elif data.get("type") in ("response.cancel", "interruption"):
+                            # BARGE-IN INMEDIATO: el usuario habló o clickeó Stop.
+                            # Seteamos interrupted=True ANTES de cancelar tasks para que
+                            # el TTS corte en el próximo chunk check (~85ms), sin esperar STT.
+                            print("🛑 Barge-in recibido — deteniendo AI inmediatamente.")
+                            setattr(voice_session, 'interrupted', True)
                             if self.current_task and not self.current_task.done():
                                 self.current_task.cancel()
                             if r:
                                 await r.publish(f'voice:interrupt:{session_id}', 'barge_in')
                             else:
                                 await voice_session.handle_interruption()
-                            # Limpiar buffers
                             audio_buffer.clear()
                             has_useful_audio = False
                             continue
@@ -267,7 +263,13 @@ class VoiceGatewayManager:
                     await voice_session.handle_interruption()
             
             print(f"🗣️ Usuario dijo: {transcription}")
-            
+
+            # GUARD: si el usuario ya detuvo la conversación mientras el STT procesaba,
+            # descartar esta transcripción — no enviar texto viejo al frontend.
+            if getattr(voice_session, 'interrupted', False):
+                print("🚫 Transcripción descartada: conversación detenida durante STT.")
+                return
+
             # Emitir eventos nativos de OpenAI para que el frontend dibuje las burbujas de chat
             await self._send_json(voice_session.ws, {
                 "type": "conversation.item.create",
@@ -277,7 +279,20 @@ class VoiceGatewayManager:
                     "content": [{"type": "input_text", "text": transcription}]
                 }
             })
-            
+
+            # FILLER INMEDIATO: reproducir muletilla mientras el LLM procesa.
+            # Esto elimina el silencio muerto entre que el usuario termina de hablar
+            # y la IA empieza a responder, dando sensación de conversación humana.
+            # El token [CLEAR_MULETILLAS] del LLM borrará el filler de la cola si
+            # el LLM responde antes de que el filler termine de reproducirse.
+            en_words = {'the', 'is', 'are', 'i', 'you', 'what', 'where', 'how',
+                        'can', 'will', 'my', 'do', 'want', 'have', 'please', 'hi', 'hello'}
+            is_english = len(set(transcription.lower().split()) & en_words) >= 2
+            fillers_es = ["Mmm...", "A ver...", "Claro...", "Un momento..."]
+            fillers_en = ["Hmm...", "Sure...", "Let me check...", "One moment..."]
+            filler = random.choice(fillers_en if is_english else fillers_es)
+            await voice_session.tts_chunk(filler)
+
             await voice_session.respond(transcription)
 
         except asyncio.CancelledError:

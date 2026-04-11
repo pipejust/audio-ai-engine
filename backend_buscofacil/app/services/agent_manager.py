@@ -491,25 +491,41 @@ class AgentManager:
             import json, re, uuid
             consolidated = defaultdict(lambda: {"name": "", "args": "", "id": ""})
 
-            # FORCED PATH: astream con tool_choice nunca popula tool_call_chunks en LangChain/Groq.
-            # Cuando el pre-check exige búsqueda, usar ainvoke para obtener el tool_call directamente.
+            # FORCED PATH: LangChain no envía tool_choice correctamente a Groq.
+            # Llamamos el cliente Groq directamente para forzar search_properties.
             if _force_tool_choice:
                 try:
-                    _forced_resp = await _llm_first.ainvoke(messages)
-                    _ftc_list = getattr(_forced_resp, "tool_calls", None) or []
-                    if _ftc_list:
+                    from groq import Groq as _GroqClient
+                    _gc = _GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+                    _role_map = {"human": "user", "ai": "assistant", "system": "system", "tool": "tool"}
+                    _gmsgs = []
+                    for _m in messages:
+                        if isinstance(_m, dict):
+                            _gmsgs.append({"role": _m.get("role", "user"), "content": _m.get("content", "") or ""})
+                        else:
+                            _role = _role_map.get(getattr(_m, "type", ""), "user")
+                            _gmsgs.append({"role": _role, "content": getattr(_m, "content", "") or ""})
+                    _gr = _gc.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=_gmsgs,
+                        tools=_search_tool_only,
+                        tool_choice={"type": "function", "function": {"name": "search_properties"}},
+                        temperature=0.0
+                    )
+                    _gtcs = _gr.choices[0].message.tool_calls or []
+                    if _gtcs:
                         is_tool_call = True
-                        for _fi, _ftc in enumerate(_ftc_list):
+                        for _fi, _gtc in enumerate(_gtcs):
                             consolidated[_fi] = {
-                                "name": _ftc["name"],
-                                "args": json.dumps(_ftc["args"]) if isinstance(_ftc["args"], dict) else (_ftc.get("args") or "{}"),
-                                "id": _ftc.get("id", "call_" + str(uuid.uuid4())[:10])
+                                "name": _gtc.function.name,
+                                "args": _gtc.function.arguments or "{}",
+                                "id": _gtc.id or "call_" + str(uuid.uuid4())[:10]
                             }
-                        print(f"✅ [FORCED] ainvoke → {[t['name'] for t in _ftc_list]}")
+                        print(f"✅ [FORCED] Groq directo → {[t.function.name for t in _gtcs]}")
                     else:
-                        print("⚠️ [FORCED] ainvoke no generó tool_calls — cayendo a astream normal")
+                        print(f"⚠️ [FORCED] Groq directo sin tool_calls. finish_reason={_gr.choices[0].finish_reason}")
                 except Exception as _fe:
-                    print(f"⚠️ [FORCED] ainvoke falló: {_fe}")
+                    print(f"⚠️ [FORCED] Groq directo falló: {_fe}")
 
             try:
                 if not is_tool_call:
@@ -793,15 +809,31 @@ class AgentManager:
                         import uuid as _uuid
                         from app.routers.tools import execute_tool, ToolRequest
                         import asyncio as _asyncio
+                        from groq import Groq as _GroqClient
 
-                        # Groq solo acepta tool_choice con exactamente 1 tool y nombre explícito
+                        # Llamar Groq directamente para garantizar que tool_choice se envía
+                        _gc2 = _GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                         _search_only = [t for t in chat_tools if t["function"]["name"] == "search_properties"]
-                        _llm_forced = llm.bind_tools(
-                            _search_only,
-                            tool_choice={"type": "function", "function": {"name": "search_properties"}}
+                        _role_map2 = {"human": "user", "ai": "assistant", "system": "system", "tool": "tool"}
+                        _gmsgs2 = []
+                        for _m in messages:
+                            if isinstance(_m, dict):
+                                _gmsgs2.append({"role": _m.get("role", "user"), "content": _m.get("content", "") or ""})
+                            else:
+                                _role2 = _role_map2.get(getattr(_m, "type", ""), "user")
+                                _gmsgs2.append({"role": _role2, "content": getattr(_m, "content", "") or ""})
+                        _gr2 = _gc2.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=_gmsgs2,
+                            tools=_search_only,
+                            tool_choice={"type": "function", "function": {"name": "search_properties"}},
+                            temperature=0.0
                         )
-                        _forced_resp = await _llm_forced.ainvoke(messages)
-                        _tc_list = getattr(_forced_resp, "tool_calls", None) or []
+                        _raw_tcs = _gr2.choices[0].message.tool_calls or []
+                        _tc_list = [
+                            {"name": _t.function.name, "args": json.loads(_t.function.arguments or "{}"), "id": _t.id}
+                            for _t in _raw_tcs
+                        ]
 
                         if _tc_list:
                             _tc = _tc_list[0]

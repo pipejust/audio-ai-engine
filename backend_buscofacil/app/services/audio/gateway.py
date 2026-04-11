@@ -208,18 +208,24 @@ class VoiceGatewayManager:
                             setattr(voice_session, 'interrupted', False)
 
                             print("✅ Commit aceptado. Evaluando STT (Semantic Barge-in)...")
-                            
+
+                            # Trim: máximo 4 segundos de PCM16@24kHz para STT.
+                            # Evita que buffers largos (usuario tardó en responder) confundan a Whisper.
+                            # 4s × 24000 Hz × 2 bytes = 192000 bytes
+                            MAX_STT_BYTES = 192000
+                            pcm_to_send = bytes(audio_buffer[-MAX_STT_BYTES:]) if len(audio_buffer) > MAX_STT_BYTES else bytes(audio_buffer)
+
                             wav_io = io.BytesIO()
                             with wave.open(wav_io, 'wb') as wf:
                                 wf.setnchannels(1)
                                 wf.setsampwidth(2)
                                 wf.setframerate(24000)
-                                wf.writeframes(audio_buffer)
-                            
+                                wf.writeframes(pcm_to_send)
+
                             wav_bytes = wav_io.getvalue()
                             audio_buffer.clear()
                             has_useful_audio = False
-                            
+
                             # Pasar el task en curso sin cancelarlo todavía
                             old_task = self.current_task
                             self.current_task = asyncio.create_task(self._transcribe_and_respond(voice_session, wav_bytes, old_task, r, session_id))
@@ -247,16 +253,36 @@ class VoiceGatewayManager:
     async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes, old_task=None, r=None, session_id=None, filename: str = "audio.wav"):
         try:
             print(f"🎙️ Procesando {len(audio_bytes)} bytes de audio ({filename}) para streaming.")
-            
+
+            # Usar idioma de sesión como hint para Whisper (reduce alucinaciones en audio corto)
+            stt_lang = getattr(voice_session, 'session_language', 'es') or 'es'
+
             try:
-                transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes, filename)
+                transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes, filename, stt_lang)
             except Exception as e:
                 print(f"⚠️ Error STT (ignorado): {e}")
                 return
 
             if not transcription or not transcription.strip():
+                # Si el audio era suficientemente largo (> 1s), el usuario intentó hablar
+                # pero STT filtró una alucinación. Avisar para que repita.
+                MIN_SPEECH_BYTES = 48000  # 1s × 24kHz × 2 bytes
+                if len(audio_bytes) >= MIN_SPEECH_BYTES and not getattr(voice_session, 'interrupted', False):
+                    sl = getattr(voice_session, 'session_language', 'es')
+                    retry_msg = "No te escuché bien, ¿puedes repetirlo?" if sl != "en" else "I didn't catch that, could you repeat?"
+                    await voice_session.tts_chunk(retry_msg)
+                    await voice_session.tts_queue.put("[TURN_DONE]")
                 return
-                
+
+            # Actualizar idioma de sesión para futuros hints al STT
+            _en_words = {"i", "you", "is", "are", "do", "what", "where", "the", "a", "and",
+                         "want", "find", "looking", "yes", "no", "ok", "okay", "please", "house"}
+            _words = set(transcription.lower().split())
+            if len(_words & _en_words) >= 2:
+                voice_session.session_language = "en"
+            elif len(_words) >= 2:
+                voice_session.session_language = "es"
+
             # --- SEMANTIC BARGE-IN ---
             # Si superó STT, es voz genuina y no ruido/alucinación STT. Interrumpimos IA ahora mismo.
             if old_task and not old_task.done():
@@ -284,19 +310,6 @@ class VoiceGatewayManager:
                     "content": [{"type": "input_text", "text": transcription}]
                 }
             })
-
-            # FILLER INMEDIATO: reproducir muletilla mientras el LLM procesa.
-            # Esto elimina el silencio muerto entre que el usuario termina de hablar
-            # y la IA empieza a responder, dando sensación de conversación humana.
-            # El token [CLEAR_MULETILLAS] del LLM borrará el filler de la cola si
-            # el LLM responde antes de que el filler termine de reproducirse.
-            en_words = {'the', 'is', 'are', 'i', 'you', 'what', 'where', 'how',
-                        'can', 'will', 'my', 'do', 'want', 'have', 'please', 'hi', 'hello'}
-            is_english = len(set(transcription.lower().split()) & en_words) >= 2
-            fillers_es = ["Mmm...", "A ver...", "Claro...", "Un momento..."]
-            fillers_en = ["Hmm...", "Sure...", "Let me check...", "One moment..."]
-            filler = random.choice(fillers_en if is_english else fillers_es)
-            await voice_session.tts_chunk(filler)
 
             await voice_session.respond(transcription)
 

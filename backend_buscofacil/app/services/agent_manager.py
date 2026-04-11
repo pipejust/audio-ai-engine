@@ -758,6 +758,13 @@ class AgentManager:
                     messages.append(ToolMessage(content=result_text, tool_call_id=c["id"], name=func_name))
                     if session_context and func_name == "search_properties":
                         session_context.tool_results['last_search'] = result_text
+                        # Guardar IDs en orden visual para que el próximo turno sepa
+                        # qué listing es "la primera", "la segunda", etc.
+                        if isinstance(data, dict) and "raw_properties" in data:
+                            session_context.tool_results['listing_ids'] = [
+                                str(p.get("id") or p.get("property_id") or p.get("listing_id") or "")
+                                for p in data["raw_properties"]
+                            ]
                 
                 # Iteración 2: Emitir veredicto final en stream
                 has_yielded = False
@@ -894,6 +901,11 @@ class AgentManager:
                             messages.append(ToolMessage(content=_rtxt, tool_call_id=_tid, name=_func))
                             if session_context:
                                 session_context.tool_results["last_search"] = _rtxt
+                                if isinstance(_data, dict) and "raw_properties" in _data:
+                                    session_context.tool_results['listing_ids'] = [
+                                        str(p.get("id") or p.get("property_id") or p.get("listing_id") or "")
+                                        for p in _data["raw_properties"]
+                                    ]
 
                             async for _c in llm_with_tools.astream(messages):
                                 if _c.content:

@@ -738,8 +738,12 @@ class AgentManager:
                                     
                                     # Forzar la respuesta verbal inmediatamente para evitar silencios del LLM
                                     if data["action"] == "view_details":
+                                        if session_context:
+                                            session_context.tool_results['detail_open_id'] = str(data.get("listing_id", ""))
                                         yield "Aquí tienes los detalles en pantalla. ¿Qué te parece? "
                                     elif data["action"] == "close_details":
+                                        if session_context:
+                                            session_context.tool_results.pop('detail_open_id', None)
                                         yield "Listo, volvamos a la lista principal. "
                                         
                                 except Exception as e: print("Error enviando action:", e)
@@ -766,21 +770,28 @@ class AgentManager:
                                 for p in data["raw_properties"]
                             ]
                 
-                # Iteración 2: Emitir veredicto final en stream
+                # Iteración 2: Emitir veredicto final en stream.
+                # Saltar si SOLO se ejecutaron open/close_property_details — ya emitimos
+                # la respuesta verbal hardcodeada y el LLM en Iter2 alucinará otro tool call.
+                _detail_only_tools = {"open_property_details", "close_property_details"}
+                _called_names = {p["name"] for p in parsed_tool_calls}
+                _skip_iter2 = _called_names and _called_names.issubset(_detail_only_tools)
+
                 has_yielded = False
-                try:
-                    async for chunk in llm_with_tools.astream(messages):
-                        if chunk.content:
-                            has_yielded = True
-                            yield chunk.content
-                except Exception as inner_e2:
-                    error_msg2 = str(inner_e2)
-                    if "failed_generation" in error_msg2:
-                        print("⚠️ Groq alucinó un tool call en la Iteración 2. Silenciando error.")
-                        if not has_yielded:
-                            yield "Aquí tienes los resultados de la búsqueda. Cuéntame qué te parecen. "
-                    else:
-                        raise inner_e2
+                if not _skip_iter2:
+                    try:
+                        async for chunk in llm_with_tools.astream(messages):
+                            if chunk.content:
+                                has_yielded = True
+                                yield chunk.content
+                    except Exception as inner_e2:
+                        error_msg2 = str(inner_e2)
+                        if "failed_generation" in error_msg2:
+                            print("⚠️ Groq alucinó un tool call en la Iteración 2. Silenciando error.")
+                            if not has_yielded:
+                                yield "Aquí tienes los resultados de la búsqueda. Cuéntame qué te parecen. "
+                        else:
+                            raise inner_e2
 
             # ── ANTI-LOOP FALLBACK ───────────────────────────────────────────────
             # Groq Llama a veces genera texto de confirmación ("Entendido, buscaremos...")
@@ -956,6 +967,8 @@ class AgentManager:
                         )
                         if websocket and isinstance(_close_data, dict) and "action" in _close_data:
                             await websocket.send_json({"status": "action", "action": _close_data["action"]})
+                        if session_context:
+                            session_context.tool_results.pop('detail_open_id', None)
                         yield "Listo, volvamos a la lista. "
                     except Exception as _de:
                         print(f"❌ [DETAIL-FALLBACK] close error: {_de}")
@@ -1004,6 +1017,8 @@ class AgentManager:
                                     "action": _open_data["action"],
                                     "listing_id": _open_data.get("listing_id")
                                 })
+                            if session_context:
+                                session_context.tool_results['detail_open_id'] = str(_target_id)
                             _sl_d = self.session_languages.get(stream_session_id, "es")
                             yield ("Here are the details on screen. What do you think? "
                                    if _sl_d == "en"

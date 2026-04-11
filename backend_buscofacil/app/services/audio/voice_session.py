@@ -33,15 +33,33 @@ class ConversationContext:
             messages.append({'role': 'system', 'content': f'Datos actuales: {tool_context}'})
         # Inyectar mapeo visual de IDs para que el LLM sepa qué listing es "la primera", etc.
         listing_ids = self.tool_results.get('listing_ids', [])
+        detail_open_id = self.tool_results.get('detail_open_id')
+
         if listing_ids:
             mapping = "\n".join([f"Propiedad #{i+1}: ID [{pid}]" for i, pid in enumerate(listing_ids) if pid])
             if mapping:
-                messages.append({'role': 'system', 'content': (
-                    f"[MAPEO VISUAL EN PANTALLA]:\n{mapping}\n"
-                    f"(Cuando el usuario diga 'la primera', 'la uno', 'esa', 'el detalle', 'muéstramela', etc., "
-                    f"usa OBLIGATORIAMENTE el ID exacto de arriba y llama open_property_details. "
-                    f"Para volver a la lista llama close_property_details.)"
-                )})
+                if detail_open_id:
+                    # Propiedad ya abierta en pantalla: NO volver a llamar open_property_details.
+                    # El usuario está viendo los detalles — responder sus preguntas con los datos actuales.
+                    open_idx = next(
+                        (i + 1 for i, pid in enumerate(listing_ids) if str(pid) == str(detail_open_id)),
+                        "?"
+                    )
+                    messages.append({'role': 'system', 'content': (
+                        f"[DETALLE ABIERTO EN PANTALLA]: El usuario está viendo AHORA MISMO los detalles "
+                        f"de la Propiedad #{open_idx} (ID {detail_open_id}).\n"
+                        f"PROHIBIDO llamar open_property_details de nuevo — ya está abierta.\n"
+                        f"Responde las preguntas del usuario (habitaciones, baños, precio, etc.) "
+                        f"directamente usando los Datos actuales. "
+                        f"Si el usuario quiere volver a la lista, llama close_property_details."
+                    )})
+                else:
+                    messages.append({'role': 'system', 'content': (
+                        f"[MAPEO VISUAL EN PANTALLA]:\n{mapping}\n"
+                        f"(Cuando el usuario diga 'la primera', 'la uno', 'esa', 'el detalle', 'muéstramela', etc., "
+                        f"usa OBLIGATORIAMENTE el ID exacto de arriba y llama open_property_details. "
+                        f"Para volver a la lista llama close_property_details.)"
+                    )})
         messages.extend(self.turns)
         return messages
  

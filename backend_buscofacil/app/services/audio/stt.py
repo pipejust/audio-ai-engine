@@ -11,20 +11,30 @@ class STTEngine:
         self.client = Groq(api_key=groq_api_key)
         self.model = "whisper-large-v3-turbo" # Muy rápido
 
-    def transcribe_audio(self, audio_bytes: bytes, filename: str = "audio.wav") -> str:
-        """Convierte bytes de audio a texto usando Groq Whisper"""
+    def transcribe_audio(self, audio_bytes: bytes, filename: str = "audio.wav", language: str = "es") -> str:
+        """Convierte bytes de audio a texto usando Groq Whisper.
+
+        language: hint de idioma para Whisper (default 'es' para BuscoFácil).
+        Pasar None para detección automática (más propenso a alucinaciones en audio corto).
+        """
         try:
             # Groq requiere un archivo con nombre, así que wrappeamos el buffer
             file_tuple = (filename, audio_bytes)
-            
-            completion = self.client.audio.transcriptions.create(
+
+            create_kwargs = dict(
                 file=file_tuple,
                 model=self.model,
                 response_format="json",
-                temperature=0.0
+                temperature=0.0,
             )
+            if language:
+                create_kwargs["language"] = language
+
+            completion = self.client.audio.transcriptions.create(**create_kwargs)
             
-            text = completion.text.strip()
+            # Whisper agrega puntuación automáticamente ("No." → "No").
+            # Limpiar al salir para que comparaciones exactas funcionen en todo el sistema.
+            text = completion.text.strip().rstrip(".,!?¡¿").strip()
             
             # Limpiar puntuación para comparar
             clean_text = text.lower().replace(".", "").replace(",", "").replace("¡", "").replace("!", "").replace("¿", "").replace("?", "").strip()

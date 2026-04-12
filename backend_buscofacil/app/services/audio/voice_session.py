@@ -50,8 +50,14 @@ class ConversationContext:
                         f"de la Propiedad #{open_idx} (ID {detail_open_id}).\n"
                         f"PROHIBIDO llamar open_property_details de nuevo — ya está abierta.\n"
                         f"Responde las preguntas del usuario (habitaciones, baños, precio, etc.) "
-                        f"directamente usando los Datos actuales. "
-                        f"Si el usuario quiere volver a la lista, llama close_property_details."
+                        f"directamente usando los Datos actuales.\n"
+                        f"HERRAMIENTAS PERMITIDAS desde esta vista:\n"
+                        f"  • close_property_details — si el usuario quiere volver a la lista.\n"
+                        f"  • schedule_visits — si el usuario pide agendar una visita/cita. "
+                        f"    ANTES de llamarla, solicita verbalmente: nombre completo, correo y teléfono "
+                        f"    si aún no los tienes. También pide fecha y hora preferida.\n"
+                        f"  • select_properties_for_appointment — si el usuario quiere marcar propiedades.\n"
+                        f"Para cualquier otra pregunta, responde con los Datos actuales sin llamar herramientas."
                     )})
                 else:
                     messages.append({'role': 'system', 'content': (

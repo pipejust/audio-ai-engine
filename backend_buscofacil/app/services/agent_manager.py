@@ -779,19 +779,33 @@ class AgentManager:
 
                 has_yielded = False
                 if not _skip_iter2:
+                    _iter2_tool_call = False
                     try:
                         async for chunk in llm_with_tools.astream(messages):
-                            if chunk.content:
+                            _tcc2 = getattr(chunk, 'tool_call_chunks', None) or []
+                            if _tcc2:
+                                _iter2_tool_call = True
+                            elif chunk.content and not _iter2_tool_call:
                                 has_yielded = True
                                 yield chunk.content
                     except Exception as inner_e2:
                         error_msg2 = str(inner_e2)
                         if "failed_generation" in error_msg2:
                             print("⚠️ Groq alucinó un tool call en la Iteración 2. Silenciando error.")
-                            if not has_yielded:
-                                yield "Aquí tienes los resultados de la búsqueda. Cuéntame qué te parecen. "
                         else:
                             raise inner_e2
+                    # Si el LLM en Iter2 no emitió texto (generó tool call o vacío), dar fallback
+                    if not has_yielded:
+                        _sl_i2 = self.session_languages.get(stream_session_id, "es")
+                        _prev_tool = list(_called_names)[0] if _called_names else ""
+                        if _prev_tool == "search_properties":
+                            yield ("Here are the results. What do you think? "
+                                   if _sl_i2 == "en" else "Aquí tienes los resultados. ¿Qué te parecen? ")
+                        elif _prev_tool == "schedule_visits":
+                            yield ("I've registered your appointment request. "
+                                   if _sl_i2 == "en" else "He registrado tu solicitud de cita. ")
+                        else:
+                            print(f"⚠️ [ITER2] Sin respuesta para tool '{_prev_tool}'. Sin fallback genérico.")
 
             # ── ANTI-LOOP FALLBACK ───────────────────────────────────────────────
             # Groq Llama a veces genera texto de confirmación ("Entendido, buscaremos...")

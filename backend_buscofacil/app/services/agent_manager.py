@@ -451,6 +451,29 @@ class AgentManager:
 
                 break
 
+        # ── Pre-check: intento de agendar sin usuario autenticado → require_login inmediato.
+        # Se intercepta ANTES de llamar el LLM para que no pida datos personales verbalmente.
+        if project_id == "buscofacil" and not client_name and not client_email:
+            _q_sched = query.lower().strip().rstrip(".,!?¡¿").strip()
+            _SCHEDULE_KW = ["agendar", "agenda", "agéndame", "agendame", "cita", "visita",
+                            "schedule", "appointment", "reservar", "reserva", "quiero ir",
+                            "ir a ver", "ver en persona", "puedo visitar", "visitar"]
+            if any(kw in _q_sched for kw in _SCHEDULE_KW):
+                print("🔐 [PRE-CHECK] Intento de agendamiento sin auth → require_login")
+                if websocket:
+                    await websocket.send_json({"status": "action", "action": "require_login"})
+                _sl_sc = self.session_languages.get(stream_session_id, "es")
+                yield ("To schedule an appointment you need to log in first. "
+                       "We're showing you the form now. "
+                       if _sl_sc == "en"
+                       else "Para agendar la cita primero necesitas iniciar sesión o registrarte. "
+                            "Te estamos mostrando el formulario ahora. ")
+                if session_context:
+                    session_context.tool_results['pending_schedule_listing_id'] = (
+                        session_context.tool_results.get('detail_open_id') or ''
+                    )
+                return
+
         # ── Pre-check: si el ÚLTIMO mensaje del asistente preguntó por presupuesto,
         # el mensaje actual del usuario ES su respuesta (precio, rango, o "no tengo").
         # En todos esos casos, forzar tool_choice="required" para que el LLM llame search_properties.

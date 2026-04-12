@@ -54,8 +54,8 @@ class ConversationContext:
                         f"HERRAMIENTAS PERMITIDAS desde esta vista:\n"
                         f"  • close_property_details — si el usuario quiere volver a la lista.\n"
                         f"  • schedule_visits — si el usuario pide agendar una visita/cita. "
-                        f"    ANTES de llamarla, solicita verbalmente: nombre completo, correo y teléfono "
-                        f"    si aún no los tienes. También pide fecha y hora preferida.\n"
+                        f"    Llámala INMEDIATAMENTE con los datos del sistema. "
+                        f"    NUNCA pidas nombre, correo ni teléfono — el sistema los maneja.\n"
                         f"  • select_properties_for_appointment — si el usuario quiere marcar propiedades.\n"
                         f"Para cualquier otra pregunta, responde con los Datos actuales sin llamar herramientas."
                     )})

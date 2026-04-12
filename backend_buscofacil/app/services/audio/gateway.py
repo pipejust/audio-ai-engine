@@ -112,28 +112,29 @@ class VoiceGatewayManager:
         voice_session.client_email = client_email
         voice_session.client_phone = client_phone
         voice_session.currency = currency
+        # Restaurar listing_ids si el frontend los envió (Composer: contextListingIds)
+        if context_listing_ids:
+            voice_session.context.tool_results['listing_ids'] = [str(lid) for lid in context_listing_ids if lid]
 
         # Emular evento inicial de OpenAI Realtime para que el Frontend despierte su UI
         await self._send_json(voice_session.ws, {"type": "session.created"})
 
-        # Saludo Proactivo Inmediato (Ultra-Rápido sin pasar por OpenAI)
-        try:
-            nombre = client_name.split(' ')[0] if client_name and '@' not in client_name else ''
-            agent_name = "Sol, " if project_id == "buscofacil" else ""
-            greeting_text = f"Hola {nombre}, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?" if nombre else f"Hola, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
-            
-            # 1. Anexar al contexto limpio sin gastar tokens
-            voice_session.context.add_turn('assistant', greeting_text)
-            
-            # 2. Iniciar burbuja en el Frontend
-            await self._send_json(voice_session.ws, {"type": "response.created"})
-            
-            # 3. Lanzar ElevenLabs directo (saltando LLM Chain)
-            await voice_session.tts_chunk(greeting_text)
-            await voice_session.tts_queue.put("[TURN_DONE]")
-            
-        except Exception as e:
-            print(f"Error en saludo directo: {e}")
+        # Saludo Proactivo Inmediato — se omite si es reconexión post-login (rehydrating=1).
+        # El frontend enviará conversation.item.create que disparará un saludo inteligente de retoma.
+        _has_rehydration = websocket.query_params.get("rehydrating", "0") == "1"
+        if not _has_rehydration:
+            try:
+                nombre = client_name.split(' ')[0] if client_name and '@' not in client_name else ''
+                agent_name = "Sol, " if project_id == "buscofacil" else ""
+                greeting_text = (f"Hola {nombre}, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
+                                 if nombre else
+                                 f"Hola, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?")
+                voice_session.context.add_turn('assistant', greeting_text)
+                await self._send_json(voice_session.ws, {"type": "response.created"})
+                await voice_session.tts_chunk(greeting_text)
+                await voice_session.tts_queue.put("[TURN_DONE]")
+            except Exception as e:
+                print(f"Error en saludo directo: {e}")
 
         redis_task = None
         if r:
@@ -190,6 +191,28 @@ class VoiceGatewayManager:
                             # Acumular para transcripción final
                             audio_buffer.extend(raw_pcm)
                             has_useful_audio = True
+
+                        elif data.get("type") == "conversation.item.create":
+                            # Rehidratación post-login: el frontend inyecta el resumen de
+                            # la conversación previa para que Sol retome desde el contexto.
+                            item = data.get("item", {})
+                            rehydration_text = None
+                            for c_item in item.get("content", []):
+                                if c_item.get("type") == "input_text" and c_item.get("text"):
+                                    rehydration_text = c_item["text"]
+                                    break
+                            if rehydration_text:
+                                print(f"📝 [REHYDRATION] Contexto post-login inyectado: {rehydration_text[:120]}")
+                                old_task = self.current_task
+                                self.current_task = asyncio.create_task(
+                                    self._respond_from_text(voice_session, rehydration_text, old_task)
+                                )
+                            continue
+
+                        elif data.get("type") == "response.create":
+                            # OpenAI-compat: ignorar silenciosamente en ruta Groq
+                            # (la rehidratación ya la dispara conversation.item.create)
+                            continue
 
                         elif data.get("type") in ("response.cancel", "interruption"):
                             # BARGE-IN INMEDIATO: el usuario habló o clickeó Stop.
@@ -267,6 +290,18 @@ class VoiceGatewayManager:
             if voice_session: voice_session.close()
             if redis_task: redis_task.cancel()
             if r: await r.close()
+
+    async def _respond_from_text(self, voice_session, text: str, old_task=None):
+        """Responde directamente desde texto sin pasar por STT (rehidratación post-login)."""
+        try:
+            if old_task and not old_task.done():
+                old_task.cancel()
+                await voice_session.handle_interruption()
+            await voice_session.respond(text)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"❌ [REHYDRATION] Error respondiendo post-login: {e}")
 
     async def _transcribe_and_respond(self, voice_session, audio_bytes: bytes, old_task=None, r=None, session_id=None, filename: str = "audio.wav"):
         try:

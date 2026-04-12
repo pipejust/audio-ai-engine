@@ -629,7 +629,27 @@ class AgentManager:
                     func_name = c["name"]
                     args = parsed["args"]
                     print(f"▶️  Ejecutando tool: {func_name} | args: {str(args)[:300]}")
-                    
+
+                    # ── GUARD: schedule_visits sin usuario autenticado ──────────
+                    # Si el LLM quiere agendar pero no hay credenciales del cliente,
+                    # enviamos require_login al frontend y detenemos el flujo.
+                    if func_name == "schedule_visits" and not client_name and not client_email:
+                        print("🔐 [SCHEDULE] Usuario no autenticado → require_login")
+                        if websocket:
+                            await websocket.send_json({"status": "action", "action": "require_login"})
+                        _sl_auth = self.session_languages.get(stream_session_id, "es")
+                        yield "[CLEAR_MULETILLAS] "
+                        yield ("To schedule an appointment you need to log in first. We're showing you the form now. "
+                               if _sl_auth == "en"
+                               else "Para agendar la cita primero necesitas iniciar sesión o registrarte. Te estamos mostrando el formulario ahora. ")
+                        # Guardar intención pendiente para retomar después del login
+                        if session_context:
+                            session_context.tool_results['pending_schedule_listing_id'] = (
+                                session_context.tool_results.get('detail_open_id') or
+                                (args.get('appointments', [{}])[0].get('listing_id') if args.get('appointments') else '') or ''
+                            )
+                        return
+
                     if func_name == "search_properties":
                         if "max_price" not in args or str(args.get("max_price")).strip() == "":
                             # Auto-override para evitar loops si el usuario ya dijo que no tiene

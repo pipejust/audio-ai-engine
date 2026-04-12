@@ -227,7 +227,8 @@ class VoiceSession:
             client_phone=getattr(self, 'client_phone', ''),
             currency=getattr(self, 'currency', 'COP'),
             websocket=self.ws,
-            session_context=self.context
+            session_context=self.context,
+            session_id=self.id,  # ID estable — evita que session_languages pierda el idioma entre turnos
         ):
             if not first_token_received:
                 first_token_received = True

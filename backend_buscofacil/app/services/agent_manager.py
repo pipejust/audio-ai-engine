@@ -461,7 +461,7 @@ class AgentManager:
                 "status": "error"
             }
 
-    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP", websocket = None, session_context = None):
+    async def process_query_stream(self, query: str, history: list = None, project_id: str = "buscofacil", client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP", websocket = None, session_context = None, session_id: str = ""):
         """Simplificación asíncrona de process_query para VoiceSession que retorna un iterador de tokens.
         Soporta Agent Tool Calling en tiempo real."""
         if not query or not query.strip(): return
@@ -502,7 +502,11 @@ class AgentManager:
                 original_text = msg.get("content", "")
                 
             if is_human:
-                stream_session_id = str(id(history)) if history else "anonymous"
+                # Usar el session_id real del VoiceSession si fue pasado; de lo contrario
+                # derivar del id del objeto history — pero esto cambia cada turno porque
+                # build_messages() crea una lista nueva, perdiendo el idioma detectado.
+                # Por eso siempre hay que pasar session_id desde VoiceSession.
+                stream_session_id = session_id if session_id else (str(id(history)) if history else "anonymous")
                 lang = _detect_language(original_text, stream_session_id, self.session_languages)
                 
                 if lang == "en":

@@ -10,10 +10,13 @@ class VoiceState(Enum):
  
 class ConversationContext:
     MAX_TURNS = 10       # máximo de pares usuario/asistente a conservar
-    SYSTEM_PROMPT = '''Eres un asistente experto en inmuebles. Responde de forma
-    natural y concisa, como en una conversación hablada. Máximo 2-3 oraciones
-    por turno salvo que el usuario pida más detalle. Nunca uses listas con
-    guiones o números — habla como una persona, no como un documento. Prohibido markdown.'''
+    SYSTEM_PROMPT = '''Eres Sol, un asistente experto en inmuebles. Responde siempre en el mismo
+    idioma que usa el usuario — si habla español, responde en español; si habla inglés, en inglés.
+    Nunca cambies de idioma a mitad de conversación sin que el usuario lo pida.
+    Responde de forma natural y concisa, como en una conversación hablada.
+    Máximo 2-3 oraciones por turno salvo que el usuario pida más detalle.
+    Nunca uses listas con guiones o números — habla como una persona, no como un documento.
+    Prohibido markdown.'''
  
     def __init__(self, dynamic_prompt: str = None):
         self.turns = []
@@ -48,14 +51,16 @@ class ConversationContext:
                     messages.append({'role': 'system', 'content': (
                         f"[DETALLE ABIERTO EN PANTALLA]: El usuario está viendo AHORA MISMO los detalles "
                         f"de la Propiedad #{open_idx} (ID {detail_open_id}).\n"
+                        f"Mantén el idioma de la conversación — no cambies de idioma en este bloque.\n"
                         f"PROHIBIDO llamar open_property_details de nuevo — ya está abierta.\n"
                         f"Responde las preguntas del usuario (habitaciones, baños, precio, etc.) "
                         f"directamente usando los Datos actuales.\n"
                         f"HERRAMIENTAS PERMITIDAS desde esta vista:\n"
                         f"  • close_property_details — si el usuario quiere volver a la lista.\n"
-                        f"  • schedule_visits — si el usuario pide agendar una visita/cita. "
-                        f"    Llámala INMEDIATAMENTE con los datos del sistema. "
-                        f"    NUNCA pidas nombre, correo ni teléfono — el sistema los maneja.\n"
+                        f"  • schedule_visits — cuando el usuario pide agendar/visitar/quiere ir a ver. "
+                        f"    Llámala con: listing_id={detail_open_id}, date=fecha_mencionada. "
+                        f"    NUNCA pidas nombre, correo ni teléfono — el sistema los maneja. "
+                        f"    NO respondas verbalmente que 'ya agendaste' — llama la herramienta.\n"
                         f"  • select_properties_for_appointment — si el usuario quiere marcar propiedades.\n"
                         f"Para cualquier otra pregunta, responde con los Datos actuales sin llamar herramientas."
                     )})

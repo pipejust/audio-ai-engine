@@ -90,7 +90,7 @@ class AgentManager:
         self.sessions = {} # Diccionario para guardar el historial de la conversación por sesión
         self.session_languages = {} # Persistir idioma por sesion
 
-    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP") -> dict:
+    def process_query(self, query: str, project_id: str = "default", session_id: str = "default_session", context_listing_ids: list = None, client_name: str = "", client_email: str = "", client_phone: str = "", currency: str = "COP", detail_open_id: str = "", language: str = "") -> dict:
         """Envía un prompt al modelo y maneja Tool Calling para que Text Chat y Voice AI sean idénticos."""
         if not query or not str(query).strip():
             return {"response": "", "status": "ignored"}
@@ -150,6 +150,35 @@ class AgentManager:
                 except Exception as e:
                     print(f"Error cargando contexto visual de vector_store: {e}")
             
+            # ── DETALLE ABIERTO ─────────────────────────────────────────────────────
+            # Si el frontend indica que ya hay un inmueble abierto en detalle,
+            # inyectamos el mismo contexto que en la sesión de voz para que el LLM
+            # sepa que debe agendar (no volver a abrir) y mantenga el idioma.
+            if detail_open_id:
+                _det_lang = (language or lang or "es").lower()
+                if _det_lang.startswith("en"):
+                    _det_block = (
+                        f"\n\n[PROPERTY OPEN IN DETAIL]\n"
+                        f"Property ID {detail_open_id} is currently shown in detail view.\n"
+                        f"FORBIDDEN: do NOT call open_property_details again — it is already open.\n"
+                        f"• schedule_visits — when the user wants to schedule/visit. "
+                        f"Call with listing_id={detail_open_id}, date=mentioned_date. "
+                        f"NEVER ask for name, email or phone — the system handles that.\n"
+                        f"Maintain the conversation language — do not switch languages.\n"
+                    )
+                else:
+                    _det_block = (
+                        f"\n\n[DETALLE ABIERTO]\n"
+                        f"La Propiedad ID {detail_open_id} ya está abierta en la vista de detalle.\n"
+                        f"PROHIBIDO: NO llames open_property_details de nuevo — ya está abierta.\n"
+                        f"• schedule_visits — cuando el usuario quiera agendar/visitar. "
+                        f"Llámala con: listing_id={detail_open_id}, date=fecha_mencionada. "
+                        f"NUNCA pidas nombre, correo ni teléfono — el sistema los maneja.\n"
+                        f"Mantén el idioma de la conversación.\n"
+                    )
+                system_prompt.content += _det_block
+                print(f"📋 [TEXT] [DETALLE ABIERTO] inyectado para ID={detail_open_id}")
+
             print(f"--- DEBUG SYSTEM PROMPT ---\n{system_prompt.content}\n----------------------------")
 
             # 2. Cargar las mismas Tools pero adaptar schema Realtime -> ChatCompletion
@@ -382,9 +411,46 @@ class AgentManager:
                     if unique_key not in seen_appts:
                         seen_appts.add(unique_key)
                         unique_appts.append(appt)
-                        
+
                 result_payload["appointments"] = unique_appts
-                
+
+                # Post-agendamiento: cerrar detalle y preguntar si necesita algo más
+                if detail_open_id:
+                    result_payload["action"] = "close_details"
+                    print(f"📋 [TEXT] close_details post-agendamiento (ID={detail_open_id})")
+
+                _sched_lang = (language or lang or "es").lower()
+                _after_sched = ("Great! Your visit has been scheduled. Is there anything else I can help you with?"
+                                if _sched_lang.startswith("en")
+                                else "¡Listo! He registrado tu cita. ¿Hay algo más en lo que te pueda ayudar?")
+                # Inyectar el mensaje si la respuesta del LLM no lo menciona ya
+                if "algo más" not in result_payload["response"].lower() and "anything else" not in result_payload["response"].lower():
+                    result_payload["response"] = _after_sched
+
+            # ── PRE-CHECK FAREWELL TEXTO ─────────────────────────────────────────────
+            # Si Sol acaba de preguntar "¿Hay algo más?" y el usuario dice "no/gracias",
+            # respondemos con una despedida. (En texto no hay sesión de voz que cerrar.)
+            else:
+                _q_txt = query.lower().strip().rstrip(".,!?¡¿").strip()
+                _FAREWELL_KW_TXT = ["no", "nada", "gracias", "listo", "ya está", "ya estuvo",
+                                    "eso es todo", "eso sería todo", "nope", "nothing",
+                                    "that's all", "no thanks", "no thank you"]
+                _user_done = any(kw == _q_txt or _q_txt.startswith(kw + " ") or _q_txt.endswith(" " + kw)
+                                 for kw in _FAREWELL_KW_TXT)
+                if _user_done:
+                    _hist = self.sessions.get(session_id, [])
+                    for _pm in reversed(_hist[:-1]):
+                        _pmc = (getattr(_pm, "content", None) or "") if not isinstance(_pm, dict) else _pm.get("content", "")
+                        _pmc_lo = str(_pmc).lower()
+                        if any(w in _pmc_lo for w in ["algo más", "anything else", "puedo ayudar", "can i help"]):
+                            _fw_lang = (language or lang or "es").lower()
+                            _farewell = ("It was a pleasure helping you. See you soon!"
+                                         if _fw_lang.startswith("en")
+                                         else "¡Ha sido un placer ayudarte! ¡Hasta pronto!")
+                            result_payload["response"] = _farewell
+                            print(f"👋 [TEXT] Farewell post-agendamiento detectado.")
+                        break
+
             return result_payload
                 
         except Exception as e:
@@ -493,16 +559,124 @@ class AgentManager:
                     print("🎯 Pre-check: último mensaje del asistente preguntó presupuesto → tool_choice=required")
                 break  # Solo nos interesa el último mensaje del asistente
 
+        # ── Pre-check: agendamiento con detalle abierto y usuario autenticado.
+        # REGLAS:
+        #   1. Nunca disparar en mensajes de rehidratación (query empieza con "INFORMACIÓN DE SISTEMA")
+        #   2. Solo forzar schedule_visits cuando el usuario HA PROPORCIONADO fecha/hora
+        #      - Si el usuario pide agendar sin fecha → el LLM pregunta la fecha (no forzamos)
+        #      - Si el usuario da fecha en la misma frase → forzamos
+        #      - Si Sol ya preguntó por fecha y el usuario responde (cualquier cosa) → forzamos
+        _force_schedule_choice = False
+        if (not _force_tool_choice and project_id == "buscofacil"
+                and client_name and client_email and session_context):
+            _detail_open_pc = session_context.tool_results.get('detail_open_id', '')
+            if _detail_open_pc:
+                _q_sched_pc = query.lower().strip().rstrip(".,!?¡¿").strip()
+                # Guard: nunca disparar en mensajes de rehidratación del sistema
+                _is_rehydration = (_q_sched_pc.startswith("información de sistema") or
+                                   _q_sched_pc.startswith("informacion de sistema") or
+                                   _q_sched_pc.startswith("information de sistema"))
+                if not _is_rehydration:
+                    # Señal directa: el usuario menciona agendamiento en este turno
+                    _SCHED_EXPLICIT = ["agendar", "agenda", "agéndame", "agendame",
+                                       "cita", "visita", "ir a ver", "quiero ir", "schedule"]
+                    _user_wants_sched = any(kw in _q_sched_pc for kw in _SCHED_EXPLICIT)
+
+                    # Señal de fecha/hora en el query actual
+                    _DATE_KW = [
+                        "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes",
+                        "sábado", "sabado", "domingo", "mañana", "pasado", "hoy",
+                        "próximo", "proximo", "esta semana", "next week",
+                        "de enero", "de febrero", "de marzo", "de abril", "de mayo", "de junio",
+                        "de julio", "de agosto", "de septiembre", "de octubre", "de noviembre", "de diciembre",
+                        "de la tarde", "de la mañana", "de la noche", "a las", " am", " pm",
+                        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+                    ]
+                    _query_has_date = any(kw in _q_sched_pc for kw in _DATE_KW)
+
+                    # Señal de flujo: Sol ya preguntó la fecha/hora → cualquier respuesta es válida
+                    _last_asked_date = False
+                    for _pm in reversed(messages[:-1]):
+                        _role_pm = (getattr(_pm, "type", None) or
+                                    (_pm.get("role", "") if isinstance(_pm, dict) else "") or "")
+                        if _role_pm not in ("ai", "assistant"):
+                            continue
+                        _pmc_pm = (getattr(_pm, "content", None) or
+                                   (_pm.get("content", "") if isinstance(_pm, dict) else "")) or ""
+                        _pmc_lo = str(_pmc_pm).lower()
+                        _last_asked_date = any(w in _pmc_lo for w in [
+                            'día y hora', 'qué día', 'qué hora', 'cuándo', 'cuando',
+                            'te gustaría ir', 'te gustaría visitar', 'what day', 'what time',
+                            'qué fecha', 'what date', 'qué hora te'
+                        ])
+                        break
+
+                    # Forzar SOLO cuando hay fecha disponible:
+                    # - Agendamiento explícito + fecha en mismo mensaje
+                    # - Sol preguntó fecha + usuario responde (cualquier cosa cuenta como fecha)
+                    _should_force = (_user_wants_sched and _query_has_date) or _last_asked_date
+                    if _should_force:
+                        _force_schedule_choice = True
+                        print(f"🗓️ Pre-check: agendamiento DETALLE ABIERTO (id={_detail_open_pc}) → force schedule_visits "
+                              f"[explicit+date={_user_wants_sched and _query_has_date}, date_followup={_last_asked_date}]")
+
+        # ── Pre-check: cierre de voz post-agendamiento.
+        # Si Sol acaba de preguntar "¿Hay algo más?" y el usuario responde con negación/agradecimiento,
+        # enviamos close_voice y respondemos con despedida.
+        _force_close_voice = False
+        if project_id == "buscofacil" and websocket:
+            _q_cv = query.lower().strip().rstrip(".,!?¡¿").strip()
+            _FAREWELL_KW = ["no", "nada", "gracias", "listo", "ya está", "ya estuvo", "eso es todo",
+                            "eso sería todo", "nope", "nothing", "that's all", "no thanks", "no thank you"]
+            _user_says_done = any(kw == _q_cv or _q_cv.startswith(kw + " ") or _q_cv.endswith(" " + kw)
+                                  for kw in _FAREWELL_KW)
+            if _user_says_done:
+                # Solo activar si el último mensaje de Sol preguntó "¿Algo más?"
+                for _pm_cv in reversed(messages[:-1]):
+                    _role_cv = (getattr(_pm_cv, "type", None) or
+                                (_pm_cv.get("role", "") if isinstance(_pm_cv, dict) else "") or "")
+                    if _role_cv not in ("ai", "assistant"):
+                        continue
+                    _pmc_cv = (getattr(_pm_cv, "content", None) or
+                               (_pm_cv.get("content", "") if isinstance(_pm_cv, dict) else "")) or ""
+                    _pmc_cv_lo = str(_pmc_cv).lower()
+                    if any(w in _pmc_cv_lo for w in ["algo más", "anything else", "puedo ayudar", "can i help"]):
+                        _force_close_voice = True
+                        print("👋 Pre-check: usuario dice 'no/gracias' tras '¿Algo más?' → close_voice")
+                    break  # Solo miramos el último mensaje del asistente
+
+        if _force_close_voice:
+            _sl_cv = self.session_languages.get(stream_session_id, "es")
+            farewell = ("Perfect! It was a pleasure helping you. See you soon! "
+                        if _sl_cv == "en"
+                        else "¡Perfecto! Ha sido un placer ayudarte. ¡Hasta pronto! ")
+            yield farewell
+            if websocket:
+                try:
+                    await websocket.send_json({"status": "action", "action": "close_voice"})
+                    print("📡 [CLOSE_VOICE] Sesión de voz cerrada post-agendamiento")
+                except Exception as _e_cv:
+                    print(f"⚠️ [CLOSE_VOICE] Error enviando close_voice: {_e_cv}")
+            return
+
         # Groq solo acepta tool_choice con 1 tool y el nombre explícito del tool.
         # "required" no es un nombre válido — debemos pasar el nombre real de la función.
         _search_tool_only = [t for t in chat_tools if t["function"]["name"] == "search_properties"]
+        _schedule_tool_only = [t for t in chat_tools if t["function"]["name"] == "schedule_visits"]
         _llm_first = (
             llm.bind_tools(
                 _search_tool_only,
                 tool_choice={"type": "function", "function": {"name": "search_properties"}}
             )
             if _force_tool_choice
-            else llm_with_tools
+            else (
+                llm.bind_tools(
+                    _schedule_tool_only,
+                    tool_choice={"type": "function", "function": {"name": "schedule_visits"}}
+                )
+                if _force_schedule_choice
+                else llm_with_tools
+            )
         )
 
         try:
@@ -549,6 +723,41 @@ class AgentManager:
                         print(f"⚠️ [FORCED] Groq directo sin tool_calls. finish_reason={_gr.choices[0].finish_reason}")
                 except Exception as _fe:
                     print(f"⚠️ [FORCED] Groq directo falló: {_fe}")
+
+            # FORCED PATH: forzar schedule_visits cuando detalle está abierto y hay intent de agendamiento.
+            elif _force_schedule_choice:
+                try:
+                    from groq import Groq as _GroqClient
+                    _gc_s = _GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+                    _role_map_s = {"human": "user", "ai": "assistant", "system": "system", "tool": "tool"}
+                    _gmsgs_s = []
+                    for _m in messages:
+                        if isinstance(_m, dict):
+                            _gmsgs_s.append({"role": _m.get("role", "user"), "content": _m.get("content", "") or ""})
+                        else:
+                            _role_s = _role_map_s.get(getattr(_m, "type", ""), "user")
+                            _gmsgs_s.append({"role": _role_s, "content": getattr(_m, "content", "") or ""})
+                    _gr_s = _gc_s.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=_gmsgs_s,
+                        tools=_schedule_tool_only,
+                        tool_choice={"type": "function", "function": {"name": "schedule_visits"}},
+                        temperature=0.0
+                    )
+                    _gtcs_s = _gr_s.choices[0].message.tool_calls or []
+                    if _gtcs_s:
+                        is_tool_call = True
+                        for _fi, _gtc_s in enumerate(_gtcs_s):
+                            consolidated[_fi] = {
+                                "name": _gtc_s.function.name,
+                                "args": _gtc_s.function.arguments or "{}",
+                                "id": _gtc_s.id or "call_" + str(uuid.uuid4())[:10]
+                            }
+                        print(f"✅ [FORCED-SCHED] schedule_visits → {[t.function.name for t in _gtcs_s]}")
+                    else:
+                        print(f"⚠️ [FORCED-SCHED] Groq sin tool_calls. finish_reason={_gr_s.choices[0].finish_reason}")
+                except Exception as _fe_s:
+                    print(f"⚠️ [FORCED-SCHED] Groq directo falló: {_fe_s}")
 
             try:
                 if not is_tool_call:
@@ -795,6 +1004,11 @@ class AgentManager:
                                     payload = {"status": "appointments_created", "appointments": data["appointments"]}
                                     print(f"📡 ENVIANDO AL FRONTEND [APPOINTMENTS]: {len(data['appointments'])} citas")
                                     await websocket.send_json(payload)
+                                    # Cerrar detalle del inmueble y limpiar contexto de detalle abierto
+                                    if session_context and session_context.tool_results.get('detail_open_id'):
+                                        await websocket.send_json({"status": "action", "action": "close_details"})
+                                        session_context.tool_results.pop('detail_open_id', None)
+                                        print(f"📡 [SCHEDULE] close_details enviado post-agendamiento")
                                 except Exception as e: print("Error enviando appointments:", e)
                                 
                     except Exception as e:
@@ -845,8 +1059,8 @@ class AgentManager:
                             yield ("Here are the results. What do you think? "
                                    if _sl_i2 == "en" else "Aquí tienes los resultados. ¿Qué te parecen? ")
                         elif _prev_tool == "schedule_visits":
-                            yield ("I've registered your appointment request. "
-                                   if _sl_i2 == "en" else "He registrado tu solicitud de cita. ")
+                            yield ("Great! Your visit has been scheduled. Is there anything else I can help you with? "
+                                   if _sl_i2 == "en" else "¡Listo! He registrado tu cita. ¿Hay algo más en lo que te pueda ayudar? ")
                         else:
                             print(f"⚠️ [ITER2] Sin respuesta para tool '{_prev_tool}'. Sin fallback genérico.")
 
@@ -986,6 +1200,12 @@ class AgentManager:
             # Cuando el LLM no llamó ninguna herramienta pero hay propiedades en pantalla
             # y el usuario claramente pide ver el detalle de una ("la primera", "esa", etc.)
             # o cerrar el detalle ("volver", "cierra"), ejecutamos la acción directamente.
+            #
+            # IMPORTANTE: si ya hay un detail_open_id (propiedad ya abierta en pantalla),
+            # NO disparar el open-fallback — evita re-abrir durante rehidratación post-login
+            # (el resumen de conversación contiene keywords como "muestrame" que harían match).
+            _current_detail_open_id = (session_context.tool_results.get('detail_open_id', '')
+                                       if session_context else '')
             if not is_tool_call and project_id == "buscofacil":
                 _listing_ids = (session_context.tool_results.get('listing_ids', [])
                                 if session_context else [])
@@ -997,13 +1217,17 @@ class AgentManager:
                 _wants_close = any(w in q_lo_d for w in _CLOSE_KEYWORDS)
 
                 # ── Detección: ¿usuario quiere abrir un detalle? ───────────────
+                # Si ya hay un detalle abierto, NUNCA re-abrir (evita falsos positivos
+                # en mensajes de rehidratación que contienen keywords del historial).
                 _OPEN_KEYWORDS = ["muéstrame", "muéstramela", "muéstrala", "muestrame",
                                   "muestramela", "muestrala", "muestra", "ver", "quiero ver",
                                   "detalle", "detalles", "abre", "abrir", "dame info",
                                   "más info", "más información", "show", "open",
                                   "primera", "segundo", "segunda", "tercera", "tercero",
                                   "cuarta", "cuarto", "esa", "ese", "esta propiedad"]
-                _wants_open = _listing_ids and any(w in q_lo_d for w in _OPEN_KEYWORDS)
+                _wants_open = (not _current_detail_open_id
+                               and _listing_ids
+                               and any(w in q_lo_d for w in _OPEN_KEYWORDS))
 
                 if _wants_close and not _wants_open:
                     print("🔄 DETAIL-FALLBACK: usuario quiere cerrar detalle → close_property_details")

@@ -135,6 +135,8 @@ class ChatRequest(BaseModel):
     clientPhone: str = ""
     currency: str = "COP"
     voice_gender: str = ""
+    language: str = ""
+    detailOpenId: str = ""
 
 @app.get("/")
 def read_root():
@@ -158,7 +160,9 @@ async def chat_with_agent(request: ChatRequest):
         c_name,
         c_email,
         c_phone,
-        request.currency
+        request.currency,
+        detail_open_id=request.detailOpenId,
+        language=request.language,
     )
     return result
 

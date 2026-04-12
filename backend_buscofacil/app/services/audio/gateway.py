@@ -69,11 +69,11 @@ class VoiceGatewayManager:
         # El frontend tiene botones explícitos de género. Si el usuario seleccionó uno,
         # este debe tener prioridad sobre la configuración estática de la base de datos.
         if voice_gender == "femenino":
-            voice_id = "shimmer"
+            voice_id = "OUBnvvuqEKdDWtapoJFn"
         elif voice_gender == "masculino":
-            voice_id = "echo"
+            voice_id = "ztZBipzb4WQJRDayep3G"
         elif not voice_id:
-            voice_id = "alloy"  # Por defecto si no manda nada
+            voice_id = "OUBnvvuqEKdDWtapoJFn"  # Por defecto voz femenina
                 
         print(f"🔊 VOZ FINAL SELECCIONADA PARA TTS: {voice_id}")
         print(f"------------------------------------------------")
@@ -116,8 +116,24 @@ class VoiceGatewayManager:
         if context_listing_ids:
             voice_session.context.tool_results['listing_ids'] = [str(lid) for lid in context_listing_ids if lid]
 
+        # Restaurar detail_open_id si el frontend indica que ya hay un detalle abierto (reconexión post-login)
+        _detail_open_param = websocket.query_params.get("detail_open_id", "")
+        if _detail_open_param:
+            voice_session.context.tool_results['detail_open_id'] = _detail_open_param
+
         # Emular evento inicial de OpenAI Realtime para que el Frontend despierte su UI
         await self._send_json(voice_session.ws, {"type": "session.created"})
+
+        # Leer idioma del frontend para saludo y hints STT.
+        # El frontend envía &language=es|en (u otros) en la URL del WebSocket.
+        _ui_lang = (websocket.query_params.get("language", "es") or "es").lower()
+        # Normalizar: solo "en" o "es" por ahora
+        _ui_lang = "en" if _ui_lang.startswith("en") else "es"
+        # session_language arranca igual al idioma de la UI para el saludo inicial,
+        # pero se actualiza automáticamente con cada transcripción del usuario.
+        # Esto permite que si la UI está en español pero el usuario habla inglés,
+        # Sol cambie al inglés desde el primer mensaje.
+        voice_session.session_language = _ui_lang
 
         # Saludo Proactivo Inmediato — se omite si es reconexión post-login (rehydrating=1).
         # El frontend enviará conversation.item.create que disparará un saludo inteligente de retoma.
@@ -126,13 +142,19 @@ class VoiceGatewayManager:
             try:
                 nombre = client_name.split(' ')[0] if client_name and '@' not in client_name else ''
                 agent_name = "Sol, " if project_id == "buscofacil" else ""
-                greeting_text = (f"Hola {nombre}, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
-                                 if nombre else
-                                 f"Hola, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?")
+                if _ui_lang == "en":
+                    greeting_text = (f"Hello {nombre}, I'm {agent_name}your virtual real estate assistant at Busco Fácil. How can I help you today?"
+                                     if nombre else
+                                     f"Hello, I'm {agent_name}your virtual real estate assistant at Busco Fácil. How can I help you today?")
+                else:
+                    greeting_text = (f"Hola {nombre}, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?"
+                                     if nombre else
+                                     f"Hola, soy {agent_name}tu asesor virtual de Busco Fácil. ¿En qué te puedo ayudar hoy?")
                 voice_session.context.add_turn('assistant', greeting_text)
                 await self._send_json(voice_session.ws, {"type": "response.created"})
                 await voice_session.tts_chunk(greeting_text)
                 await voice_session.tts_queue.put("[TURN_DONE]")
+                print(f"👋 Saludo en '{_ui_lang}': {greeting_text[:80]}")
             except Exception as e:
                 print(f"Error en saludo directo: {e}")
 
@@ -241,6 +263,11 @@ class VoiceGatewayManager:
                         elif data.get("type") == "input_audio_buffer.commit":
                             if not has_useful_audio or not audio_buffer:
                                 print("⚠️ Backend IGNORÓ el commit porque no se guardaron fragmentos útiles.")
+                                # Enviar señal de ready para que el frontend sepa que puede hablar
+                                try:
+                                    await websocket.send_json({"status": "listening_ready"})
+                                except Exception:
+                                    pass
                                 continue
 
                             # Nuevo turno del usuario → limpiar flag de interrupción previa.
@@ -307,11 +334,12 @@ class VoiceGatewayManager:
         try:
             print(f"🎙️ Procesando {len(audio_bytes)} bytes de audio ({filename}) para streaming.")
 
-            # Usar idioma de sesión como hint para Whisper (reduce alucinaciones en audio corto)
-            stt_lang = getattr(voice_session, 'session_language', 'es') or 'es'
-
+            # NO pasar hint de idioma a Whisper: cuando se fuerza un idioma, Whisper
+            # traduce el audio al idioma indicado en vez de transcribirlo en el original.
+            # Ej: usuario habla inglés + hint "es" → Whisper devuelve texto en español.
+            # Se deja auto-detección siempre; el filtro de alucinaciones opera por duración.
             try:
-                transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes, filename, stt_lang)
+                transcription = await asyncio.to_thread(self.stt_engine.transcribe_audio, audio_bytes, filename, None)
             except Exception as e:
                 print(f"⚠️ Error STT (ignorado): {e}")
                 return
@@ -327,14 +355,34 @@ class VoiceGatewayManager:
                     await voice_session.tts_queue.put("[TURN_DONE]")
                 return
 
-            # Actualizar idioma de sesión para futuros hints al STT
-            _en_words = {"i", "you", "is", "are", "do", "what", "where", "the", "a", "and",
-                         "want", "find", "looking", "yes", "no", "ok", "okay", "please", "house"}
-            _words = set(transcription.lower().split())
-            if len(_words & _en_words) >= 2:
-                voice_session.session_language = "en"
-            elif len(_words) >= 2:
-                voice_session.session_language = "es"
+            # Actualizar idioma de sesión para futuros hints al STT.
+            # Usamos langdetect para detectar el idioma real del usuario (cualquier idioma),
+            # no solo ES↔EN. El frontend solo envía `language` para el saludo inicial;
+            # a partir del primer mensaje, el backend determina el idioma automáticamente.
+            if len(transcription.split()) >= 2:
+                try:
+                    from langdetect import detect as _ld_voice, DetectorFactory as _DFV
+                    _DFV.seed = 0  # determinístico
+                    _detected_voice_lang = _ld_voice(transcription)
+                    # Mapear código ISO → "es" o "en" (ampliable a otros idiomas)
+                    if _detected_voice_lang in ("es", "pt", "ca", "gl"):
+                        voice_session.session_language = "es"
+                    elif _detected_voice_lang in ("en",):
+                        voice_session.session_language = "en"
+                    else:
+                        # Para cualquier otro idioma, guardar el código directamente
+                        # para que el LLM reciba el hint correcto en futuros turnos
+                        voice_session.session_language = _detected_voice_lang
+                    print(f"🌐 [STT] Idioma detectado: {_detected_voice_lang} → session_language={voice_session.session_language}")
+                except Exception as _ld_err:
+                    # Fallback por wordset si langdetect falla
+                    print(f"⚠️ [langdetect voice] Error: {_ld_err}. Usando wordset fallback.")
+                    _en_words = {"i", "you", "is", "are", "the", "a", "and", "want", "find", "looking"}
+                    _words = set(transcription.lower().split())
+                    if len(_words & _en_words) >= 2:
+                        voice_session.session_language = "en"
+                    else:
+                        voice_session.session_language = "es"
 
             # --- SEMANTIC BARGE-IN ---
             # Si superó STT, es voz genuina y no ruido/alucinación STT. Interrumpimos IA ahora mismo.

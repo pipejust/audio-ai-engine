@@ -31,29 +31,48 @@ class STTEngine:
                 create_kwargs["language"] = language
 
             completion = self.client.audio.transcriptions.create(**create_kwargs)
-            
+
             # Whisper agrega puntuación automáticamente ("No." → "No").
             # Limpiar al salir para que comparaciones exactas funcionen en todo el sistema.
             text = completion.text.strip().rstrip(".,!?¡¿").strip()
-            
+
             # Limpiar puntuación para comparar
             clean_text = text.lower().replace(".", "").replace(",", "").replace("¡", "").replace("!", "").replace("¿", "").replace("?", "").strip()
-            
+
             # Si el texto es demasiado corto (solo ruido o 1 letra) lo ignoramos
             if len(clean_text) <= 1:
                 return ""
-            
-            # Filtro extendido de alucinaciones comunes de Whisper (Español e Inglés)
-            hallucinations = [
-                "gracias", "subtítulos", "amén", "gracias por ver", "suscríbete", 
-                "thank you", "thanks", "subtitles", "you", "oh", "ah",
-                "hasta la próxima", "hasta la proxima", "nos vemos", "muchas gracias"
+
+            # ── Filtro de alucinaciones de Whisper ───────────────────────────────────
+            # Audio corto (< 2s = 96000 bytes @ 24kHz 16-bit):
+            #   "gracias", "thank you", etc. son alucinaciones típicas de eco/silencio.
+            # Audio largo (>= 2s): esas mismas palabras son respuestas REALES del usuario
+            #   (p.ej. después de agendar una cita el usuario dice "gracias").
+            SHORT_AUDIO_THRESHOLD = 96000  # 2s × 24000Hz × 2 bytes
+
+            # Estas alucinaciones se filtran SIEMPRE, independientemente del tamaño
+            hallucinations_always = [
+                "subtítulos", "subtitulos", "amén", "amen",
+                "gracias por ver", "gracias por ver el video",
+                "suscríbete", "suscribete",
+                "subtitles", "you", "oh", "ah",
+                "hasta la próxima", "hasta la proxima",
             ]
-            
-            if clean_text in hallucinations:
-                print(f"🛑 STT Filtrado (Alucinación detectada): {text}")
+
+            # Estas solo se filtran si el audio es corto (probable eco/ruido de fondo)
+            hallucinations_short_only = [
+                "gracias", "muchas gracias",
+                "thank you", "thanks", "nos vemos",
+            ]
+
+            if clean_text in hallucinations_always:
+                print(f"🛑 STT Filtrado (Alucinación fija): {text}")
                 return ""
-                
+
+            if len(audio_bytes) < SHORT_AUDIO_THRESHOLD and clean_text in hallucinations_short_only:
+                print(f"🛑 STT Filtrado (Alucinación en audio corto {len(audio_bytes)}B < {SHORT_AUDIO_THRESHOLD}B): {text}")
+                return ""
+
             return text
         except Exception as e:
             print(f"❌ Error en STT (Groq Whisper): {e}")

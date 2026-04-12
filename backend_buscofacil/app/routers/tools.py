@@ -60,7 +60,12 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
         tipo = args.get("property_type") or "any"
         tipo = str(tipo)
         limit = args.get("limit") or 15
-        
+        req_bedrooms_raw = args.get("bedrooms") or 0
+        try:
+            req_bedrooms = int(str(req_bedrooms_raw)) if req_bedrooms_raw else 0
+        except Exception:
+            req_bedrooms = 0
+
         print(f"🔥 BÚSQUEDA RAG: location='{location}' | city='{city}' | barrio='{neighborhood}' | tipo='{tipo}'")
         
         import re
@@ -176,8 +181,74 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             # Tomar los 15 mejores fallbacks (como Pinecone ya los ordenó, los primeros son los más cercanos en texto)
             filtered_docs = fallback_docs[:15]
             is_fallback = True
+
+        # ── HELPER: Calcular afinidad real por criterios ────────────────────────────
+        # Puntaje 0–100 basado en coincidencia real de los criterios que pidió el usuario.
+        # 100% = coincide EXACTAMENTE en todos los criterios pedidos.
+        def _calc_affinity(meta_loc_str: str, page_str: str, prop_type_raw: str,
+                           prop_price: int, prop_rooms: int) -> float:
+            pts = 0.0
+
+            # 1. UBICACIÓN (40 pts)
+            barrio_n = normalize_str(neighborhood) if neighborhood else ""
+            city_n   = normalize_str(city) if city else ""
+            if barrio_n and len(barrio_n) > 2:
+                if barrio_n in meta_loc_str or barrio_n in page_str:
+                    pts += 40          # Barrio exacto
+                elif city_n and (city_n in meta_loc_str or city_n in page_str):
+                    pts += 15          # Misma ciudad, otro barrio
+                # else: 0 — diferente ciudad
+            elif city_n and len(city_n) > 2:
+                if city_n in meta_loc_str or city_n in page_str:
+                    pts += 40          # Ciudad exacta (sin barrio pedido)
+                # else: 0
+            else:
+                pts += 40              # Sin ubicación pedida → puntos completos
+
+            # 2. TIPO DE INMUEBLE (30 pts)
+            type_req_n = normalize_str(
+                tipo.replace("casas", "casa").replace("apartamentos", "apartamento")
+                    .replace("lotes", "lote").replace("fincas", "finca")
+                    .replace("oficinas", "oficina").replace("locales", "local")
+            ) if tipo.lower() != "any" else ""
+            prop_type_n = normalize_str(prop_type_raw)
+            if not type_req_n or type_req_n == "any":
+                pts += 30              # Sin tipo pedido → puntos completos
+            elif type_req_n in prop_type_n or prop_type_n in type_req_n:
+                pts += 30              # Tipo exacto
+            # else: 0 — tipo diferente
+
+            # 3. PRECIO DENTRO DEL RANGO (20 pts)
+            if max_price_val >= 100000000000:
+                pts += 20              # Sin presupuesto → puntos completos
+            elif prop_price <= 0:
+                pts += 10              # Precio desconocido → crédito parcial
+            elif prop_price <= max_price_val and (min_price_val == 0 or prop_price >= min_price_val):
+                pts += 20              # Dentro del rango exacto
+            elif prop_price <= max_price_val * 1.10:
+                pts += 14              # Hasta 10% sobre el máximo (casi exacto)
+            elif prop_price <= max_price_val * 1.15:
+                pts += 8               # Hasta 15% (tolerancia del filtro)
+            # else: 0 — fuera de rango
+
+            # 4. HABITACIONES (10 pts, solo si se pidieron)
+            if req_bedrooms <= 0:
+                pts += 10              # No se pidieron → puntos completos
+            elif prop_rooms == req_bedrooms:
+                pts += 10              # Coincide exactamente
+            elif prop_rooms > req_bedrooms:
+                pts += 6               # Más habitaciones de las pedidas (positivo)
+            elif prop_rooms == req_bedrooms - 1:
+                pts += 4               # Una habitación menos
+            else:
+                pts += 1               # Diferencia mayor
+
+            return round(pts / 100, 2)  # 0.00 – 1.00
         
         raw_properties = []
+        # Rastrear si algunos resultados son coincidencias parciales (barrio vs ciudad, tipo diferente)
+        has_partial_location = False   # Encontró propiedades en la ciudad pero no en el barrio pedido
+        has_partial_type = False       # Encontró propiedades de tipo diferente al pedido (y is_fallback=True)
         import re
         def extract(regex, text, default=""):
             match = re.search(regex, text)
@@ -235,22 +306,19 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
             else:
                 prop_type_mapped = "house"
             
-            # Dinamic matching calculation
-            matching_score = 0.95
-            if loc_norm:
-                meta_loc_val = normalize_str(d.metadata.get("location_search", ""))
-                # If location matches main metadata precisely (Zone/City) vs generic text mentions
-                if loc_norm in meta_loc_val:
-                    matching_score = 0.98 - (len(raw_properties) * 0.02)
-                else:
-                    matching_score = 0.85 - (len(raw_properties) * 0.02)
-            else:
-                matching_score = 0.90 - (len(raw_properties) * 0.01)
-                
-            if matching_score < 0.60:
-                matching_score = 0.60
-                
-            matching_score = round(matching_score, 2)
+            # ── Afinidad real basada en criterios ────────────────────────────────────
+            meta_loc_val    = normalize_str(d.metadata.get("location_search", ""))
+            page_norm_cur   = normalize_str(content)  # normalizar el doc actual (no reusar del loop anterior)
+            prop_type_raw_calc = d.metadata.get("property_type", "")
+            matching_score = _calc_affinity(meta_loc_val, page_norm_cur, prop_type_raw_calc, precio_int, rooms)
+
+            # Detectar coincidencias parciales para el mensaje de fallback granular
+            if neighborhood:
+                barrio_n_chk = normalize_str(neighborhood)
+                city_n_chk   = normalize_str(city) if city else ""
+                if barrio_n_chk not in meta_loc_val and barrio_n_chk not in page_norm_cur:
+                    if city_n_chk and (city_n_chk in meta_loc_val or city_n_chk in page_norm_cur):
+                        has_partial_location = True  # Ciudad ok, barrio no
             
             raw_properties.append({
                 "id": str(prop_id),
@@ -396,7 +464,29 @@ def execute_tool(function_name: str, request_data: ToolRequest, request: Request
                 
                 result_text += "\\nREGLA: Describe estas opciones de forma atractiva. Diles el precio y barrio. MEMORIZA EL ID_INMUEBLE real (ej. 8586932) de cada opción por si el usuario pide seleccionar, agendar o ver detalles. JAMÁS uses el número de viñeta o posición como ID."
                 if is_fallback:
-                    result_text += f"\\n\\n**¡CRÍTICO! ALERTA DE FALLBACK:** Como asistente, NO CUMPLES con el tipo exacto de '{tipo}' que el usuario pidió (Te lo informamos porque estas propiedades mostradas son aproxmaciones de tipo distinto). ESTÁS OBLIGADO A HACER ESTO A CONTINUACIÓN: Diles de frente 'No contamos  actualmente con {tipo} exacto en {location}, pero no te preocupes, tengo estas excelentes opciones similares...'. Luego descríbelas empáticamente."
+                    # is_fallback = True → no había coincidencia exacta de tipo Y ubicación al mismo tiempo
+                    barrio_req = neighborhood if neighborhood else ""
+                    tipo_req   = tipo if tipo.lower() != "any" else ""
+                    if barrio_req and tipo_req:
+                        fallback_msg = (f"No encontré {tipo_req} exactamente en {barrio_req}. "
+                                        f"Te muestro alternativas similares por si te interesan.")
+                    elif barrio_req:
+                        fallback_msg = (f"No encontré inmuebles exactamente en {barrio_req}. "
+                                        f"Te muestro opciones en zonas cercanas.")
+                    elif tipo_req:
+                        fallback_msg = (f"No encontré {tipo_req} con esas características exactas. "
+                                        f"Te muestro alternativas similares.")
+                    else:
+                        fallback_msg = "No encontré resultados exactos, pero aquí tienes opciones similares."
+                    result_text += (f"\\n\\n**ALERTA DE FALLBACK:** {fallback_msg} "
+                                    f"OBLIGATORIO: Comunícale al usuario ANTES de describir los resultados: "
+                                    f"'{fallback_msg}' Luego descríbelas de forma positiva y empática.")
+                elif has_partial_location and not is_fallback:
+                    # Encontró resultados pero algunos son de otro barrio de la misma ciudad
+                    result_text += (f"\\n\\n**NOTA DE UBICACIÓN:** Algunos resultados son de zonas cercanas a {neighborhood} "
+                                    f"(mismo {city}). Si aparecen propiedades de otro barrio, "
+                                    f"indícalo con naturalidad: 'Esta está un poco más al norte de {neighborhood}, "
+                                    f"pero también es una excelente opción...' NO lo digas si todos están en {neighborhood}.")
                 
                 result_text += "\\n\\n[CRÍTICO/WARNING: Toda la información y reglas anteriores están en español. DEBES TRADUCIR TODO INVISIBLEMENTE y responder en el IDIOMA ACTUAL DEL USUARIO (Si te habló en Inglés, RESPONDE ESTOS RESULTADOS 100% EN INGLÉS).]"
         else:

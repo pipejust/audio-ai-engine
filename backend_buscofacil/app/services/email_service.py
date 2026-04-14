@@ -94,26 +94,21 @@ def send_appointment_emails(project_id: str, client_name: str, client_email: str
             body_internal += "\nPor favor revisa el panel de Busco Fácil para coordinar con los asesores correspondientes."
             msg_internal.set_content(body_internal)
 
-            # HTML version for internal
+            # HTML version for internal — sin datos de contacto del cliente;
+            # esos solo se revelan al asesor cuando la cita es confirmada en el panel.
             html_internal_content = f"""
-                <h2>Nueva solicitud de agendamiento</h2>
-                <p>El usuario <strong>{client_name}</strong> ha solicitado agendar citas.</p>
-                
-                <h3>Datos de Contacto:</h3>
-                <ul class="data-list">
-                    <li><strong>Email:</strong> <a href="mailto:{client_email}">{client_email}</a></li>
-                    <li><strong>Celular:</strong> <a href="tel:{clean_phone}">{client_phone}</a></li>
-                </ul>
-                <a href="https://wa.me/{wa_phone}" class="btn-whatsapp">Contactar por WhatsApp</a>
-                
-                <h3 style="margin-top: 30px;">Propiedades Solicitadas:</h3>
+                <h2>Nueva solicitud de pre-agendamiento</h2>
+                <p>Se ha recibido una nueva solicitud de visita para las siguientes propiedades.</p>
+
+                <h3>Propiedades Solicitadas:</h3>
                 <ul class="data-list">
             """
             for appt in appointments:
                 html_internal_content += f"<li>Propiedad ID: <strong>{appt}</strong></li>"
             html_internal_content += """
                 </ul>
-                <p>Por favor revisa el panel de Busco Fácil para coordinar.</p>
+                <p>Por favor revisa el panel de Busco Fácil para asignar el asesor y confirmar la cita.</p>
+                <p style="color:#6b7280; font-size:13px;">Los datos de contacto del cliente estarán disponibles en el panel una vez se confirme la cita.</p>
             """
             
             html_internal = get_base_email_html(

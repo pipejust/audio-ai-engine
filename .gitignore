@@ -9,3 +9,8 @@ backend/backend_debug.log
 .DS_Store
 .env*.local
 backend_skeik/.env
+
+# Artefactos de despliegue externo retirado
+.vercel/
+/vercel_logs*.txt
+/vercel_ws_logs.txt
